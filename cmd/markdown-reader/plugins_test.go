@@ -231,7 +231,11 @@ func TestUnknownLanguageDoesNotLaunchInstalledPlugin(t *testing.T) {
 	if _, err := os.Stat(request); !os.IsNotExist(err) {
 		t.Fatal("unrelated code launched a plugin")
 	}
-	if !bytes.Contains(out.Bytes(), []byte("fmt.Println(42)")) {
+	var text strings.Builder // a highlighted line arrives as several runs
+	for _, r := range presentationRecords(t, out.Bytes()) {
+		text.Write(r.body)
+	}
+	if !strings.Contains(text.String(), "fmt.Println(42)") {
 		t.Fatal("lost ordinary code")
 	}
 }

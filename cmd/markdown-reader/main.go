@@ -134,14 +134,24 @@ func run(args []string, out io.Writer) error {
 		w.Write(link) // bufio retains first write error.
 	}
 	var source []byte // the chunk being visited; segments are relative to it
-	emitCode := func(lines *text.Segments, flags uint32) {
+	// emitCode writes a code block one line at a time. With a known language each line is split
+	// into runs (plain gaps and classified tokens); every run of a line carries the line's marks.
+	emitCode := func(lines *text.Segments, flags uint32, language string) {
 		flags |= mono | codeBlockLine
 		if lines.Len() == 0 {
 			emit([]byte("\n"), flags|codeFirst|codeLast, nil)
 			return
 		}
+		var code []byte
+		starts := make([]int, lines.Len())
 		for i := 0; i < lines.Len(); i++ {
+			starts[i] = len(code)
 			segment := lines.At(i)
+			code = append(code, segment.Value(source)...)
+		}
+		spans := highlight(language, code)
+		next := 0
+		for i := 0; i < lines.Len(); i++ {
 			f := flags
 			if i == 0 {
 				f |= codeFirst
@@ -149,7 +159,30 @@ func run(args []string, out io.Writer) error {
 			if i == lines.Len()-1 {
 				f |= codeLast // goldmark ends even an unterminated final line with "\n"
 			}
-			emit(segment.Value(source), f, nil)
+			start := starts[i]
+			end := len(code)
+			if i+1 < lines.Len() {
+				end = starts[i+1]
+			}
+			if len(spans) == 0 {
+				emit(code[start:end], f, nil)
+				continue
+			}
+			for next < len(spans) && spans[next].end <= start {
+				next++
+			}
+			pos := start
+			for k := next; k < len(spans) && spans[k].start < end; k++ {
+				a, b := max(spans[k].start, start), min(spans[k].end, end)
+				if a > pos {
+					emit(code[pos:a], f, nil)
+				}
+				emit(code[a:b], f|uint32(spans[k].class)<<tokenShift, nil)
+				pos = b
+			}
+			if pos < end {
+				emit(code[pos:end], f, nil)
+			}
 		}
 	}
 	emitTable := func(table *east.Table, flags uint32) {
@@ -233,10 +266,10 @@ func run(args []string, out io.Writer) error {
 				}
 				emit([]byte(fmt.Sprintf("[Plugin %s: document exceeds %d plugin diagrams; source follows]\n", plugins.languages[language].ID, maxPluginDiagrams)), flags, nil)
 			}
-			emitCode(n.Lines(), flags)
+			emitCode(n.Lines(), flags, language)
 			return
 		case *ast.CodeBlock:
-			emitCode(n.Lines(), flags)
+			emitCode(n.Lines(), flags, "")
 			return
 		case *ast.Text:
 			s := v.Segment.Value(source)

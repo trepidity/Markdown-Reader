@@ -523,8 +523,22 @@ static NSFont *WithItalic(NSFont *font) {
 
 // Builds the attribute dictionary for one normalized flags value. Called once
 // per distinct value; the decoder caches the result.
+// GitHub's syntax palette, dark and light. Token classes come from the parser (see highlight.go).
+static NSColor *SyntaxColor(NSUInteger token) {
+ static const uint32_t dark[]={0,0xff7b72,0xa5d6ff,0x8b949e,0x79c0ff,0xffa657,0xd2a8ff,0x79c0ff,0x7ee787,0xffa657,0x7ee787,0xffa198,0xd2a8ff};
+ static const uint32_t light[]={0,0xcf222e,0x0a3069,0x6e7781,0x0550ae,0x953800,0x8250df,0x0550ae,0x116329,0x953800,0x116329,0x82071e,0x8250df};
+ if(token==0||token>12)return nil;
+ uint32_t d=dark[token],l=light[token];
+ return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance){
+  BOOL isDark=[[appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua,NSAppearanceNameDarkAqua]] isEqualToString:NSAppearanceNameDarkAqua];
+  uint32_t c=isDark?d:l;
+  return [NSColor colorWithSRGBRed:((c>>16)&255)/255.0 green:((c>>8)&255)/255.0 blue:(c&255)/255.0 alpha:1];
+ }];
+}
+
 static NSDictionary *MakeAttributes(uint32_t flags) {
- NSUInteger heading=MIN(6,(flags>>8)&15),list=(flags>>16)&255,quote=(flags>>24)&15;
+ BOOL codeLine=flags&FlagCodeLine; // a code line has no heading level: bits 8..11 hold its token class
+ NSUInteger heading=codeLine?0:MIN(6,(flags>>8)&15),token=codeLine?(flags>>8)&15:0,list=(flags>>16)&255,quote=(flags>>24)&15;
  BOOL bold=flags&FlagBold,italic=flags&FlagItalic,code=flags&FlagCodeLine,table=flags&FlagTable,mono=flags&FlagMono;
  static const CGFloat headingSize[7]={0,32,26,21,18,17,15},headingBefore[7]={0,28,24,20,16,14,12};
  NSFont *font;
@@ -554,6 +568,7 @@ static NSDictionary *MakeAttributes(uint32_t flags) {
   }
  }
  NSColor *color=(heading==6||quote||(flags&FlagStrike))?NSColor.secondaryLabelColor:NSColor.labelColor;
+ if(token&&SyntaxColor(token))color=SyntaxColor(token);
  NSMutableDictionary *a=[NSMutableDictionary dictionaryWithObjectsAndKeys:font,NSFontAttributeName,[p copy],NSParagraphStyleAttributeName,color,NSForegroundColorAttributeName,nil];
  if(mono&&!code&&!table)a[ReaderInlineCodeAttribute]=@YES;
  if(flags&FlagStrike)a[NSStrikethroughStyleAttributeName]=@(NSUnderlineStyleSingle);
