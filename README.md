@@ -1,74 +1,66 @@
-# Markdown Viewer
+# Markdown Reader
 
-A Go macOS application with a native AppKit window and an embedded WebKit reading surface. No local server, Electron, Node runtime, or hosted frontend. The application core is Go; the macOS bridge is Objective-C and the embedded UI is HTML/CSS/JavaScript.
+A small, fast, read-only Markdown reader for macOS. Open a file or a folder and read: no editor, no server, no WebKit in the reading process.
 
-## Run
+A short-lived Go helper parses the document and streams a styled representation; a native AppKit/TextKit 2 app presents it. The reader keeps one document in memory and nothing else, so it stays light and opens large files quickly.
 
-Requires macOS 12+, Go 1.25+, and Xcode Command Line Tools.
+![Markdown Reader icon](assets/icons/AppIcon-1024.png)
 
-```sh
-./scripts/build.sh
-open "dist/Markdown Viewer.app"
-open -a "$PWD/dist/Markdown Viewer.app" examples/Welcome.md
-```
+## Build and run
 
-The build creates an ad-hoc signed app for the current Mac architecture. It is not notarized for distribution to other Macs. If the environment restricts the shared Go cache, set `GOCACHE` to a writable directory before building.
-
-## Install and associate Markdown files
+Requires macOS 13+, Go 1.25+ and the Xcode Command Line Tools. Node and npm are needed only to build the Mermaid plugin.
 
 ```sh
-./scripts/install.sh
+./scripts/build-viewer-only.sh
+open "dist/Markdown Reader.app"
+open -a "$PWD/dist/Markdown Reader.app" examples/Welcome.md
 ```
 
-This builds, copies the app into `~/Applications`, and registers it with Launch Services. It refuses to replace an existing installation. An optional argument selects a different installation directory.
+The app is ad-hoc signed for the current Mac. It is not notarized for distribution. To make it the default, select a `.md` file in Finder, then **Get Info → Open with → Markdown Reader → Change All…**.
 
-To make it the default: select a `.md` file in Finder → **Get Info** → **Open with** → **Markdown Viewer** → **Change All…**. Repeat for `.markdown` or `.mdown` if needed. The app declares its Markdown document types and receives Finder open-file events, including when already running. Installing does not change your existing defaults automatically.
+## Using it
 
-## Use
+- **Open** a file or a folder with **⌘O**, by dropping it on the window, from Finder, or on the command line.
+- **Folder rail.** Opening a folder (or a file with no folder open) shows a sidebar of its subfolders and Markdown files, loaded as you expand them. Selecting a file opens it; opening a document any other way selects its row. Hide it with **⌃⌘S**; **File → Close Folder** removes it.
+- **Reload** with **⌘R**. Reloading keeps your place. The reader also remembers its place in each document you switch away from during the session.
+- **Find** with **⌘F**, **⌘G** and **⇧⌘G**. The window subtitle shows the match count, for example `“actors” · 3 of 18`.
+- **⌘-hover / ⌘-click** a document name (`spec/07-care-model-boundary.md`) to underline it and open it. Names are looked up from the current folder, each parent folder and the open folder.
+- **Switching documents** while one is still loading cancels the first load.
 
-- **Preview is the default.** Toggle to the raw editor using the toolbar or **⌘E**.
-- **Live saving:** each text input is queued in order and written atomically to disk. Save errors stay visible, preserve the draft, and prevent opening another document or quitting until resolved. **Save Copy** writes the draft under a new filename; **Reload** explicitly discards it after confirmation.
-- **Undo / redo:** **⌘Z / ⇧⌘Z** work across preview/editor toggles and write the result to disk. History is in memory for the current document, bounded to 500 snapshots or roughly 32 MiB (at least one undo step retained). Each open document retains its own history when you switch files. Closing a document or reloading resets its history.
-- **Appearance:** choose Paper, Night, Sepia, or System and serif, sans serif, or monospace reading typography. Preferences persist between launches.
-- **Find:** **⌘F** searches the current document; **⇧⌘F** opens search across open documents or the selected folder. Search opens a two-pane modal: matching files on the left, highlighted matches with surrounding lines on the right. Queries are literal, case-insensitive by default, with a Match case option. **Down** from the query moves to the file list. **Up/Down** navigate files or matches; **Left/Right** switch panes; **Home/End** jump to the first/last entry; **Page Up/Down** move five entries; **Enter** opens the selected match and **Escape** closes the modal. Tab and Shift-Tab move between controls. **⌘G / ⇧⌘G** move through matches. Double-click a match or use Open match to open it with the mouse. Visible matches are highlighted in preview; matches in Markdown syntax or across formatting are revealed as exact selections in the editor. Results include filename, line, column, and surrounding text.
-- **Open documents:** files remain open for the session. Use the document selector to switch and the × beside it to close the current document. Open-document search includes retained unsaved drafts; folder search reads unopened files from disk and uses the in-app content for open files.
-- **Recent files:** use Recents or **⇧⌘O**. The most recent 15 paths persist.
-- **Open folders:** **⌘O** accepts a file or folder. Only explicitly opening a folder shows the sidebar. Opening a single file from Finder, the Open dialog, or Recents clears any previous folder sidebar. Selecting a file within the sidebar, a search result, or an already-open document preserves the current folder view. It lists Markdown files recursively, skips hidden directories, and supports up to 5,000 files. Drag the sidebar divider to resize it; its width is remembered between launches. The divider also supports Left/Right arrows, Home/End, and double-click to reset. Narrow windows clamp the displayed width to leave room for the document. Close the sidebar with its × button.
-- **New file:** **⌘N**. **Save Copy:** **⇧⌘S**. Both require a new filename to avoid accidental replacement.
-- CommonMark plus tables, strikethrough, task lists, and fenced code. Local PNG/JPEG/GIF/WebP images inside the document directory are embedded. Web links open in the default browser. Relative document links open in the app.
+## What it renders
 
-## Persistence and limits
+- CommonMark with tables, strikethrough, task lists, block quotes, nested lists and rules. Raw HTML is not rendered.
+- **Front matter** appears as a properties table of key and value. Anything it cannot structure is shown as a code block instead.
+- **Code** is syntax highlighted in GitHub colours for Go, JavaScript/TypeScript, JSON, shell, SQL, Python, YAML and diff. Inline code is a rounded pill.
+- **Tables** are drawn as a real grid whose text can be found, selected and copied. A table wider than the reading column gets an **Expand / Fit to window** button above it.
+- **Mermaid diagrams** (fenced `mermaid` blocks) are rendered by an optional plugin. The text shows first with a placeholder per diagram, and the diagrams fill in as they finish. **File → Export Diagram as SVG…** saves one. **Plugins → Enable Plugins** turns the plugin off.
+- Links open in the default browser, and relative links open in the app.
 
-Settings live in the platform user-config directory under `Markdown Viewer/settings.json`. On macOS this is normally `~/Library/Application Support/Markdown Viewer/`. Set `MARKDOWN_VIEWER_CONFIG` to an alternate config root for isolated runs.
+See [viewer-only/plugins/README.md](viewer-only/plugins/README.md) for the plugin protocol, limits and Mermaid safety settings.
 
-Files must be regular UTF-8 text, at most 16 MiB. Symlinks are resolved on open. Saves preserve POSIX permission bits and replace the file using a temporary sibling and rename; extended attributes, hard-link identity, and ACL preservation are not implemented. Disk content is compared with the last saved version before writing; external edits cause a conflict instead of a blind overwrite. This is not a cross-process lock: another writer can still race the final check and rename. Open documents check for external changes every 750 ms and when the app becomes active. Clean content reloads automatically in preview and editor modes, retaining scroll position and the editor selection where possible. External reloads reset undo history; normal autosaves preserve it. Missing or invalid files retain their last readable content and recover automatically when readable again.
+## Limits and known gaps
 
-Markdown is untrusted input. Raw HTML is omitted, output passes through a tag/attribute/URL allowlist, and a Content Security Policy blocks network content and embedded frames. Remote images and SVG are intentionally not loaded. Search is limited to 1,000 matches and 64 MiB of source per query, with an explicit limit notice. Folder search rescans Markdown files recursively, skips hidden directories, rejects symlinks outside the selected folder, and reports unreadable or unsupported files. Queries must be a single line. Open-document search follows live reloads; conflicting unsaved drafts are retained until Save Copy or explicit Reload.
+- Files must be regular UTF-8 text of at most 16 MiB. The reader never writes to a document.
+- Selecting inside a table follows line order, so dragging across a table highlights whole rows. A phrase that wraps across lines in a table cell cannot be found.
+- Heading anchors (`#section` links) are not supported.
+- A document holds at most 16 diagrams. A plugin is trusted application code, not a sandbox, and there is no plugin installer.
+- The rail does not refresh when files change on disk. Reopen the folder to refresh it.
 
-There is no arbitrary custom CSS loading, syntax coloring, PDF export, or split-pane editing in this initial version.
-
-## Development and verification
-
-A separate [viewer-only memory experiment](viewer-only/README.md) builds
-`dist/Markdown Reader.app`: native AppKit/TextKit 2 with a short-lived Go parser,
-no editor or document cache. Its report includes settled and loading memory,
-native read-only checks, presentation limitations, and reproduction instructions.
-
-A separate [fully Rust comparison round](rust-comparison/README.md) builds egui, Iced, Slint, FLTK, and Wry/WebKit applications with a shared Rust core. Bundles are in `dist/rust-comparison`; the report records build sizes, native smoke checks, and feature gaps against Go.
-
-Five runnable macOS builds—WebKit, AppKit/TextKit, Fyne, Qt Widgets, and Gio—are available in `dist/comparison`. See the [comparison report](comparison/README.md) for application links, measured native memory, feature differences, and rebuild instructions. The four alternative shells are comparison prototypes.
+## Development
 
 ```sh
 go test ./...
 go vet ./...
-node --check cmd/markdown-viewer/ui/app.js # optional development check
-./scripts/build.sh
+./scripts/build-viewer-only.sh
+python3 scripts/test-reader-plugins.py   # needs the built bundle and WebKit services
 ```
 
-`internal/app` exposes the same JSON command contract used by WebKit. Tests drive it against actual temporary files to check preview output, live saving, durable undo/redo, permissions, recent files, themes, folders, unsafe Markdown, and preservation of unsaved drafts on conflicts. Native UI acceptance must be performed separately; Go tests do not prove AppKit/WebKit behavior.
+- `cmd/markdown-reader` is the parser helper: Markdown in, the `MVRO1` presentation stream out. It owns tables, front matter, highlighting and plugin dispatch.
+- `viewer-only/main.m` is the AppKit/TextKit 2 app. `viewer-only/plugins` holds the plugin protocol and the Mermaid plugin.
+- `assets/icons` holds the app icon, regenerated with `scripts/make-icons.sh`.
+- Go tests drive the helper's real output stream and plugin processes. They do not prove native behaviour, which is checked by running the bundled app.
+- Memory measurements and method are in [viewer-only/README.md](viewer-only/README.md) and [viewer-only/results](viewer-only/results).
 
-Optional WebKit regression and performance/memory commands, measured results, and their limits are recorded in [VERIFICATION.md](VERIFICATION.md). The UI test harness builds separately with `scripts/build-ui-tests.sh`; profiling is opt-in and excluded from normal tests.
+The repository also still contains the earlier **Markdown Viewer** editor build (`cmd/markdown-viewer`, `internal/`, `./scripts/build.sh`) and the comparison prototypes ([comparison](comparison/README.md), [rust-comparison](rust-comparison/README.md)). They are kept for reference and are not the current product. [VERIFICATION.md](VERIFICATION.md) records that earlier work.
 
-Structure: `internal/document` owns file persistence and safe rendering; `internal/app` owns session commands and preferences; `cmd/markdown-viewer` contains the macOS shell and embedded UI; `scripts` packages the app.
-
-The renderer uses [Goldmark](https://github.com/yuin/goldmark), with a separate application-level HTML allowlist. The macOS shell implements Apple's [open-file delegate](https://developer.apple.com/documentation/appkit/nsapplicationdelegate/application(_:openfiles:)). Dependencies are pinned in `go.mod`/`go.sum`; this environment built from its offline cache.
+The parser uses [Goldmark](https://github.com/yuin/goldmark). Dependencies are pinned in `go.mod` and `go.sum`.
