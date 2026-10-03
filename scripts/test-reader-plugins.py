@@ -66,7 +66,11 @@ with tempfile.TemporaryDirectory(prefix="reader-plugin-test-") as directory:
         body, extra = data[offset:offset+length], data[offset+length:offset+length+meta]
         assert len(body) == length and len(extra) == meta
         offset += length + meta
-        if flags == 1 << 30:
+        if flags & (1 << 31):
+            continue  # end of text; diagrams follow
+        if flags & (1 << 28) and not flags & (1 << 30):
+            visible.append(body.decode())  # a diagram that failed: reason and source
+        elif flags & (1 << 30):
             diagrams += 1
             assert body.startswith(b"%PDF-") and b"%%EOF" in body
             text = " ".join(ET.fromstring(extra).itertext())
@@ -75,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix="reader-plugin-test-") as directory:
             visible.append(body.decode())
     assert diagrams == 1
     text = "".join(visible)
-    for expected in ["Before diagram", "After diagram", "Plugin mermaid:", "not valid Mermaid", "Still readable"]:
+    for expected in ["Before diagram", "After diagram", "Rendering diagram", "Plugin mermaid:", "not valid Mermaid", "Still readable"]:
         assert expected in text, expected
     assert path.read_text() == source
 print("PASS reader command: vector record, syntax fallback, surrounding text, unchanged input")

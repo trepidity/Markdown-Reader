@@ -3,13 +3,16 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
@@ -59,6 +62,11 @@ func cellText(b *strings.Builder, n ast.Node, source []byte, code bool) {
 			cellText(b, child, source, code)
 		}
 	}
+}
+
+type deferredDiagram struct {
+	language string
+	source   []byte
 }
 
 // chunkTarget is the minimum source size parsed as one goldmark document.
@@ -203,6 +211,7 @@ func run(args []string, out io.Writer) error {
 			}
 		}
 	}
+	var deferred []deferredDiagram
 	var visit func(ast.Node, uint32, []byte)
 	visit = func(n ast.Node, flags uint32, link []byte) {
 		paragraph := false
@@ -242,20 +251,18 @@ func run(args []string, out io.Writer) error {
 		case *ast.FencedCodeBlock:
 			language := strings.ToLower(string(v.Language(source)))
 			if _, installed := plugins.languages[language]; installed {
-				var code bytes.Buffer
-				for i := 0; i < n.Lines().Len(); i++ {
-					line := n.Lines().At(i)
-					code.Write(line.Value(source))
-				}
-				result, id, renderError := plugins.render(language, code.Bytes())
-				if renderError == nil && result != nil {
-					emit(result.PDF, vectorRecord, []byte(result.SVG))
-					emit([]byte("\n"), flags, nil)
+				if len(deferred) < maxPluginDiagrams {
+					var code bytes.Buffer
+					for i := 0; i < n.Lines().Len(); i++ {
+						line := n.Lines().At(i)
+						code.Write(line.Value(source))
+					}
+					// Only the index and style travel now; the diagram arrives after the text.
+					emit([]byte("Rendering diagram…\n"), placeholderRecord|(flags&^0xFF)|uint32(len(deferred)), nil)
+					deferred = append(deferred, deferredDiagram{language, code.Bytes()})
 					return
 				}
-				if renderError != nil {
-					emit([]byte(fmt.Sprintf("[Plugin %s: %s; source follows]\n", id, renderError)), flags, nil)
-				}
+				emit([]byte(fmt.Sprintf("[Plugin %s: document exceeds %d plugin diagrams; source follows]\n", plugins.languages[language].ID, maxPluginDiagrams)), flags, nil)
 			}
 			emitCode(n.Lines(), flags)
 			return
@@ -326,12 +333,41 @@ func run(args []string, out io.Writer) error {
 			break
 		}
 	}
-	return w.Flush()
+	if len(deferred) == 0 {
+		return w.Flush()
+	}
+	var end [12]byte
+	binary.LittleEndian.PutUint32(end[:], bodyEndRecord)
+	w.Write(end[:])
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	var flushed error
+	plugins.renderAll(deferred, func(i int, result *pluginResult, id string, renderError error) bool {
+		if renderError == nil && result != nil {
+			emit(result.PDF, vectorRecord|lateRecord|uint32(i), []byte(result.SVG))
+		} else {
+			reason := "no result"
+			if renderError != nil {
+				reason = renderError.Error()
+			}
+			emit([]byte(fmt.Sprintf("[Plugin %s: %s; source follows]\n%s", id, reason, bytes.TrimRight(deferred[i].source, "\n"))), lateRecord|uint32(i), nil)
+		}
+		flushed = w.Flush() // the reader went away: stop spending time on diagrams
+		return flushed == nil
+	})
+	if flushed != nil {
+		return flushed
+	}
+	return pluginParent.Err()
 }
 
 func main() {
 	// A tight heap: the helper is short-lived and memory, not CPU, is the budget.
 	debug.SetGCPercent(20)
+	var stop context.CancelFunc
+	pluginParent, stop = signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer stop()
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

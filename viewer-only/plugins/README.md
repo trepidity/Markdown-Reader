@@ -20,9 +20,9 @@ followed by the original source. Surrounding Markdown remains readable.
 
 The reader process does not link WebKit, Node, or a Go runtime. On open, the
 short-lived Go parser loads manifests from the bundle's `Resources/Plugins`.
-Only a matching fence starts a plugin. The Mermaid executable starts an
-offscreen, nonpersistent WebKit view, renders SVG/PDF, writes its result, and
-exits. Only native diagram presentation remains. There is no renderer daemon,
+Only a matching fence starts a plugin. The Mermaid executable starts one
+offscreen, nonpersistent WebKit view per document, renders each diagram to SVG/PDF in
+turn, writes each result as it finishes, and exits. Only native diagram presentation remains. There is no renderer daemon,
 cross-document diagram cache, network rendering service, or CDN access.
 
 Node/npm are **build dependencies only**. Mermaid 12.1.0 and esbuild 0.28.2 are
@@ -95,6 +95,7 @@ Example manifest:
   "version": "1.0.0",
   "languages": ["mermaid"],
   "executable": "render",
+  "batch": true,
   "timeoutMilliseconds": 10000
 }
 ```
@@ -132,12 +133,38 @@ stderr at 4 KiB, SVG at 2 MiB, and PDF at 4 MiB. Dimensions must be positive, at
 most 4096 each, and total at most four million square points per diagram.
 The native decoder additionally validates the PDF page and bounds.
 
+### Batch protocol (optional, `"batch": true`)
+
+A renderer with a costly start-up (the Mermaid helper starts WebKit and parses a 5 MB
+bundle) can declare `"batch": true`. The host then starts it once per document and
+sends every diagram of its language in one request:
+
+```json
+{"protocol":2,"language":"mermaid","sources":["flowchart LR; A-->B\n","sequenceDiagram\n..."],"width":900}
+```
+
+The plugin writes **one JSON line per diagram, in request order, as soon as each is
+done**: the protocol 1 result object plus `"index"`, or `{"index":2,"error":"message"}`
+to fail only that diagram. Exit zero when finished. Diagrams the plugin never reached
+(early exit, stall, bad line) are shown as failures with their source; the others are
+kept. Each diagram gets the manifest timeout; the first gets twice that, because it includes start-up. Without
+`"batch"`, a plugin is invoked once per diagram with protocol 1, as above.
+
+### Limits
+
 Rendering is sequential, with at most 16 attempts, 30 seconds of rendering time,
 16 MiB of combined vector payload, and sixteen million square points per document.
 Each plugin gets its declared 50–10,000 ms timeout. Cancellation kills its process
 group. These bound the host's work/output; they are not a hard OS memory quota on
 trusted plugin executable internals. The Mermaid helper has its own nine-second
 deadline and WebKit's lifecycle governs its XPC processes.
+
+Diagrams stream *after* the text so the document is readable while they render. The
+parser first writes a "Rendering diagram…" placeholder line (flag `1 << 29`, index in
+the low byte) per diagram, then a body-end record (flag `1 << 31`), then one late
+record per diagram (flag `1 << 28`, index in the low byte) as each finishes. The
+reader replaces the placeholder with the diagram, or with the failure text and source.
+Opening another document cancels the parser and discards its late records.
 
 The reader's `MVRO1` presentation stream adds record flag `1 << 30`: the body is
 raw PDF bytes and the metadata is UTF-8 SVG. Ordinary records remain styled text.

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -27,6 +28,26 @@ func TestPluginProcess(t *testing.T) {
 	mode, destination := args[i+1], args[i+2]
 	input, _ := io.ReadAll(os.Stdin)
 	_ = os.WriteFile(destination, input, 0600)
+	if strings.HasPrefix(mode, "batch") {
+		// Each launch appends one byte, so the test can count processes.
+		launches, _ := os.OpenFile(destination+".launches", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		launches.WriteString("x")
+		launches.Close()
+		var request struct{ Sources []string }
+		json.Unmarshal(input, &request)
+		pdf := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4\n% Plugin test output\n%%EOF\n"))
+		for i := range request.Sources {
+			switch {
+			case mode == "batch-partial" && i == 1:
+				json.NewEncoder(os.Stdout).Encode(map[string]any{"index": i, "error": "bad syntax"})
+			case mode == "batch-partial" && i == 3:
+				os.Exit(3) // dies before diagram 3
+			default:
+				json.NewEncoder(os.Stdout).Encode(map[string]any{"index": i, "protocol": 1, "svg": fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text>Diagram %d</text></svg>`, i), "pdf": pdf, "width": 200, "height": 100})
+			}
+		}
+		os.Exit(0)
+	}
 	switch mode {
 	case "fail":
 		os.Exit(7)
@@ -64,7 +85,10 @@ func pluginFixture(t *testing.T, mode string) (string, string) {
 	}
 	manifest := `{"schemaVersion":1,"id":"test-diagram","name":"Test diagram","version":"1.0.0","languages":["mermaid"],"executable":"render","timeoutMilliseconds":100}`
 	if mode != "hang" {
-		manifest = strings.Replace(manifest, `:100}`, `:1000}`, 1)
+		manifest = strings.Replace(manifest, `:100}`, `:5000}`, 1) // re-launching the test binary can be slow on a loaded machine
+	}
+	if strings.HasPrefix(mode, "batch") {
+		manifest = strings.Replace(manifest, `"executable"`, `"batch":true,"executable"`, 1)
 	}
 	if err = os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0600); err != nil {
 		t.Fatal(err)
@@ -109,19 +133,40 @@ func TestPluginRendersMatchingFenceAndPreservesSurroundingText(t *testing.T) {
 		t.Fatal(err)
 	}
 	records := presentationRecords(t, out.Bytes())
-	images := 0
+	images, bodyEnd, firstLate := 0, -1, -1
+	var placeholders []uint32
 	var visible strings.Builder
-	for _, r := range records {
-		if r.flags == 1<<30 {
+	for i, r := range records {
+		switch {
+		case r.flags&placeholderRecord != 0:
+			placeholders = append(placeholders, r.flags&0xFF)
+			visible.Write(r.body)
+		case r.flags == bodyEndRecord:
+			bodyEnd = i
+		case r.flags&lateRecord != 0:
+			if firstLate < 0 {
+				firstLate = i
+			}
+			if r.flags != vectorRecord|lateRecord|0 {
+				t.Fatalf("diagram 0 patch has flags %#x", r.flags)
+			}
 			images++
 			if !bytes.HasPrefix(r.body, []byte("%PDF-1.4")) || !bytes.Contains(r.meta, []byte("Rendered nodes")) {
 				t.Fatal("lost vector output")
 			}
-		} else {
+		default:
 			visible.Write(r.body)
 		}
 	}
-	if images != 1 || !strings.Contains(visible.String(), "Before") || !strings.Contains(visible.String(), "After") || !strings.Contains(visible.String(), "fmt.Println(1)") {
+	// The reader must be able to show every word of text before any diagram exists.
+	// A diagram can only replace the placeholder whose index it carries.
+	if len(placeholders) != 1 || placeholders[0] != 0 {
+		t.Fatalf("placeholder indices %v, want [0]", placeholders)
+	}
+	if bodyEnd < 0 || firstLate < bodyEnd {
+		t.Fatalf("body end at %d, first diagram at %d", bodyEnd, firstLate)
+	}
+	if images != 1 || !strings.Contains(visible.String(), "Before") || !strings.Contains(visible.String(), "After") || !strings.Contains(visible.String(), "fmt.Println(1)") || !strings.Contains(visible.String(), "Rendering diagram") {
 		t.Fatalf("lost content: %d images %s", images, visible.String())
 	}
 	var input struct {
@@ -153,15 +198,20 @@ func TestPluginFailuresRetainSourceAndFollowingContent(t *testing.T) {
 			if err := run([]string{"--plugins", root, path}, &out); err != nil {
 				t.Fatal(err)
 			}
-			var text strings.Builder
+			var text, patch strings.Builder
 			for _, r := range presentationRecords(t, out.Bytes()) {
-				if r.flags == 1<<30 {
+				if r.flags&vectorRecord != 0 {
 					t.Fatal("failure shown as diagram")
 				}
-				text.Write(r.body)
+				if r.flags&lateRecord != 0 {
+					patch.Write(r.body)
+				} else {
+					text.Write(r.body)
+				}
 			}
-			if !strings.Contains(text.String(), "Plugin test-diagram:") || !strings.Contains(text.String(), "graph TD; A-->B") || !strings.Contains(text.String(), "Still readable") {
-				t.Fatal(text.String())
+			// The failure replaces the placeholder with the reason and the source.
+			if !strings.Contains(patch.String(), "Plugin test-diagram:") || !strings.Contains(patch.String(), "graph TD; A-->B") || !strings.Contains(text.String(), "Still readable") {
+				t.Fatal(patch.String(), text.String())
 			}
 			if time.Since(start) > 2*time.Second {
 				t.Fatal("plugin deadline did not bound rendering")
@@ -219,5 +269,66 @@ func TestDisabledPluginsLeaveFenceAsSource(t *testing.T) {
 	}
 	if !strings.Contains(text.String(), "graph TD; A-->B") {
 		t.Fatal("lost source")
+	}
+}
+
+// A batch plugin pays its start-up cost once for the whole document; each result still
+// lands on the placeholder whose index it carries.
+func TestBatchPluginServesEveryDiagramFromOneProcess(t *testing.T) {
+	root, request := pluginFixture(t, "batch")
+	path := filepath.Join(t.TempDir(), "diagrams.md")
+	os.WriteFile(path, []byte("```mermaid\nA\n```\n\ntext\n\n```mermaid\nB\n```\n\n```mermaid\nC\n```\n"), 0600)
+	var out bytes.Buffer
+	if err := run([]string{"--plugins", root, path}, &out); err != nil {
+		t.Fatal(err)
+	}
+	launches, _ := os.ReadFile(request + ".launches")
+	if len(launches) != 1 {
+		t.Fatalf("%d plugin processes for 3 diagrams", len(launches))
+	}
+	var sent struct {
+		Protocol int
+		Sources  []string
+	}
+	b, _ := os.ReadFile(request)
+	json.Unmarshal(b, &sent)
+	if sent.Protocol != 2 || strings.Join(sent.Sources, "|") != "A\n|B\n|C\n" {
+		t.Fatalf("batch request %+v", sent)
+	}
+	for _, r := range presentationRecords(t, out.Bytes()) {
+		if r.flags&lateRecord != 0 {
+			want := fmt.Sprintf("Diagram %d", r.flags&0xFF)
+			if r.flags&vectorRecord == 0 || !bytes.Contains(r.meta, []byte(want)) {
+				t.Fatalf("diagram %d carries %s", r.flags&0xFF, r.meta)
+			}
+		}
+	}
+}
+
+// One bad diagram does not cost the others, and a renderer that dies mid-batch fails
+// only the diagrams it never reached.
+func TestBatchPluginIsolatesFailuresPerDiagram(t *testing.T) {
+	root, _ := pluginFixture(t, "batch-partial")
+	path := filepath.Join(t.TempDir(), "diagrams.md")
+	os.WriteFile(path, []byte("```mermaid\n0\n```\n\n```mermaid\n1\n```\n\n```mermaid\n2\n```\n\n```mermaid\n3\n```\n"), 0600)
+	var out bytes.Buffer
+	if err := run([]string{"--plugins", root, path}, &out); err != nil {
+		t.Fatal(err)
+	}
+	late := map[uint32]record{}
+	for _, r := range presentationRecords(t, out.Bytes()) {
+		if r.flags&lateRecord != 0 {
+			late[r.flags&0xFF] = r
+		}
+	}
+	isDiagram := func(i uint32) bool { return late[i].flags&vectorRecord != 0 }
+	if len(late) != 4 || !isDiagram(0) || !isDiagram(2) {
+		t.Fatalf("diagrams before and after the bad one were lost: %v", late)
+	}
+	if isDiagram(1) || !bytes.Contains(late[1].body, []byte("bad syntax")) || !bytes.Contains(late[1].body, []byte("1")) {
+		t.Fatalf("diagram 1: %q", late[1].body)
+	}
+	if isDiagram(3) || !bytes.Contains(late[3].body, []byte("Plugin test-diagram:")) {
+		t.Fatalf("diagram 3: %q", late[3].body)
 	}
 }

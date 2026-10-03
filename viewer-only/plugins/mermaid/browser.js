@@ -14,6 +14,7 @@ const locked = {
 };
 mermaid.initialize({ ...locked, secure: ['secure', ...Object.keys(locked)] });
 
+let renders = 0; // Mermaid needs a fresh element id per call when one page renders a batch.
 window.renderMermaid = async request => {
   try {
     if (request.protocol !== 1 || request.language !== 'mermaid' ||
@@ -25,7 +26,7 @@ window.renderMermaid = async request => {
     if (/^\s*---(?:\r?\n|$)/.test(request.source) || /%%\s*\{/.test(request.source)) {
       throw new Error('Diagram configuration directives are disabled');
     }
-    const { svg } = await mermaid.render('reader-diagram', request.source);
+    const { svg } = await mermaid.render(`reader-diagram-${renders++}`, request.source);
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     if (doc.querySelector('parsererror') || doc.documentElement.localName !== 'svg') {
       throw new Error('Invalid SVG returned by Mermaid');
