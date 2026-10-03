@@ -14,7 +14,9 @@ p = dict(CFBundleName='Markdown Reader', CFBundleDisplayName='Markdown Reader',
          CFBundlePackageType='APPL', CFBundleShortVersionString='0.1.0', CFBundleVersion='1',
          LSMinimumSystemVersion='13.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication',
          CFBundleDocumentTypes=[dict(CFBundleTypeName='Markdown', CFBundleTypeRole='Viewer',
-                                    LSHandlerRank='Alternate', CFBundleTypeExtensions=['md','markdown'])])
+                                    LSHandlerRank='Alternate', CFBundleTypeExtensions=['md','markdown']),
+                               dict(CFBundleTypeName='Folder', CFBundleTypeRole='Viewer',
+                                    LSHandlerRank='Alternate', LSItemContentTypes=['public.folder'])])
 with (Path(sys.argv[1])/'Contents/Info.plist').open('wb') as f: plistlib.dump(p,f)
 PY
 codesign --force --sign - "$bundle/Contents/Resources/markdown-reader"
