@@ -389,6 +389,11 @@ static BOOL MarkdownName(NSString *name) {
 @property ReaderLoad *currentLoad;
 @property NSMutableDictionary<NSString *,ReaderDocument *> *positions; // where the reader was in each document this session
 @property CGFloat restoredY;
+@property NSTimer *findTimer;
+@property NSString *findStatus;
+@property NSString *findQuery;
+@property NSRange findSelection;
+@property NSUInteger findLength;
 @property NSSplitView *split;
 @property NSView *rail;
 @property NSOutlineView *outline;
@@ -440,7 +445,9 @@ static BOOL MarkdownName(NSString *name) {
  NSMenuItem *edit=[NSMenuItem new];edit.title=@"Edit";edit.submenu=[NSMenu new];[menu addItem:edit];
  [edit.submenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
  [edit.submenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
- NSMenuItem *find=[edit.submenu addItemWithTitle:@"Find…" action:@selector(performTextFinderAction:) keyEquivalent:@"f"];find.tag=NSTextFinderActionShowFindInterface;
+ for(NSArray *item in @[@[@"Find…",@"f",@(NSTextFinderActionShowFindInterface),@0],@[@"Find Next",@"g",@(NSTextFinderActionNextMatch),@0],@[@"Find Previous",@"G",@(NSTextFinderActionPreviousMatch),@0]]){
+  NSMenuItem *i=[edit.submenu addItemWithTitle:item[0] action:@selector(findAction:) keyEquivalent:item[1]];i.tag=[item[2] integerValue];i.target=self;
+ }
  NSMenuItem *view=[NSMenuItem new];view.title=@"View";view.submenu=[NSMenu new];[menu addItem:view];
  NSMenuItem *sidebar=[view.submenu addItemWithTitle:@"Hide Sidebar" action:@selector(toggleRail:) keyEquivalent:@"s"];sidebar.keyEquivalentModifierMask=NSEventModifierFlagControl|NSEventModifierFlagCommand;sidebar.target=self;
  NSMenuItem *plugins=[NSMenuItem new];plugins.title=@"Plugins";plugins.submenu=[NSMenu new];[menu addItem:plugins];
@@ -512,6 +519,7 @@ static BOOL MarkdownName(NSString *name) {
  NSString *path=self.loading&&self.loadingPath?self.loadingPath:self.document.path;
  self.window.title=path?path.lastPathComponent:@"Markdown Reader";
  NSString *idle=path?path.stringByDeletingLastPathComponent.stringByAbbreviatingWithTildeInPath:(self.folderRoot?self.folderRoot.path.stringByAbbreviatingWithTildeInPath:@"");
+ if(self.findStatus.length&&!self.loading)idle=self.findStatus; // while searching, the subtitle carries the match count
  self.window.subtitle=self.loading?(self.pendingTotal?[NSString stringWithFormat:@"Rendering diagram %lu of %lu…",(unsigned long)MIN(self.pendingDone+1,self.pendingTotal),(unsigned long)self.pendingTotal]:@"Loading…"):idle;
  self.window.representedURL=path?[NSURL fileURLWithPath:path]:nil;
 }
@@ -706,6 +714,41 @@ static BOOL MarkdownName(NSString *name) {
 - (CGFloat)splitView:(NSSplitView *)split constrainMaxCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index {return MIN(proposed,420);}
 - (BOOL)splitView:(NSSplitView *)split shouldAdjustSizeOfSubview:(NSView *)view {return view!=self.rail;}
 - (BOOL)splitView:(NSSplitView *)split canCollapseSubview:(NSView *)view {return NO;}
+#pragma mark - Find count
+
+// NSTextFinder's find bar has no match counter, so count the matches here. A light timer
+// runs only while the bar is open and recounts only when the query, selection or text changed.
+- (void)findAction:(NSMenuItem *)sender {
+ [self.text performTextFinderAction:sender];
+ if(!self.findTimer)self.findTimer=[NSTimer scheduledTimerWithTimeInterval:0.25 target:self selector:@selector(updateFindStatus:) userInfo:nil repeats:YES];
+ [self updateFindStatus:nil];
+}
+- (void)updateFindStatus:(NSTimer *)timer {
+ if(!self.scroll.findBarVisible){
+  [self.findTimer invalidate];self.findTimer=nil;self.findQuery=nil;
+  if(self.findStatus){self.findStatus=nil;[self refreshTitle];}
+  return;
+ }
+ NSString *query=[[NSPasteboard pasteboardWithName:NSPasteboardNameFind] stringForType:NSPasteboardTypeString]?:@"";
+ NSRange selection=self.text.selectedRange;NSTextStorage *storage=self.text.textStorage;
+ if([query isEqualToString:self.findQuery?:@""]&&NSEqualRanges(selection,self.findSelection)&&storage.length==self.findLength&&self.findStatus)return;
+ self.findQuery=query;self.findSelection=selection;self.findLength=storage.length;
+ NSString *status=nil;
+ if(query.length){
+  NSString *text=storage.string;NSUInteger total=0,current=0;NSRange rest=NSMakeRange(0,text.length);
+  while(total<100000){
+   NSRange hit=[text rangeOfString:query options:NSCaseInsensitiveSearch range:rest];
+   if(hit.location==NSNotFound)break;
+   total++;if(NSEqualRanges(hit,selection))current=total;
+   rest=NSMakeRange(NSMaxRange(hit),text.length-NSMaxRange(hit));
+  }
+  NSString *shown=query.length>24?[[query substringToIndex:24] stringByAppendingString:@"…"]:query;
+  if(!total)status=[NSString stringWithFormat:@"“%@” · No matches",shown];
+  else if(current)status=[NSString stringWithFormat:@"“%@” · %lu of %lu%@",shown,(unsigned long)current,(unsigned long)total,total>=100000?@"+":@""];
+  else status=[NSString stringWithFormat:@"“%@” · %lu matches",shown,(unsigned long)total];
+ }
+ if(![status ?: @"" isEqualToString:self.findStatus ?: @""]){self.findStatus=status;[self refreshTitle];}
+}
 // Replaces one "Rendering diagram…" line with its finished diagram, or with the failure text and source.
 - (void)patchDiagram:(uint32_t)flags body:(NSData *)body meta:(NSData *)meta {
  NSTextStorage *storage=self.text.textStorage;uint32_t index=flags&0xFF;
