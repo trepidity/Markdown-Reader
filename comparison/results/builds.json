@@ -1,0 +1,22 @@
+[
+  {
+    "variant": "WebKit",
+    "binary_sha256": "324f8ccff25af88234fbba059100de11ee7936fb0b38b0a4b3e392919ecb7119"
+  },
+  {
+    "variant": "AppKit",
+    "binary_sha256": "2de84e138be64fc7f4c284467fa3888f1252bd2e9661809974547efdc9ddb450"
+  },
+  {
+    "variant": "Fyne",
+    "binary_sha256": "6a46efb0802f0d1625ecb52d661ac91b085c32a5bb53a59cc26c7db1115bfd6e"
+  },
+  {
+    "variant": "Qt",
+    "binary_sha256": "14a0706ec2648b4a8559869300a308848aecf34818ced7a38983adadfe11ea0a"
+  },
+  {
+    "variant": "Gio",
+    "binary_sha256": "f6a8e6f01af10903646ac0f341bb5d7bd2105bf39225c1487f4f62b9d8f7750b"
+  }
+]

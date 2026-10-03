@@ -1,0 +1,18 @@
+{
+  "small": {
+    "bytes": 8192,
+    "sha256": "1b189f5d28e6f6305f90caff3ec9ed3b40fc667ade71e4931278b294c4bea8c4"
+  },
+  "medium": {
+    "bytes": 262144,
+    "sha256": "a56a956f21a3a38245ba9d93ddd4c6e7b0d274a790e598e0aea91b08dcedb131"
+  },
+  "large": {
+    "bytes": 1048576,
+    "sha256": "555e931502ee67b7c66701b3fdc6007973c4619c9b1dd675b0c333fb5436e7e1"
+  },
+  "very-large": {
+    "bytes": 4194304,
+    "sha256": "fea2bf1550f15d2638de881d768d48cb26ceddd5cc7a6f2eacb9b1302c81e0c1"
+  }
+}

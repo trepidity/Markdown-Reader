@@ -1,0 +1,2 @@
+# Preserve the exact benchmark bytes and their recorded hashes.
+comparison/fixtures/*.md -text -whitespace

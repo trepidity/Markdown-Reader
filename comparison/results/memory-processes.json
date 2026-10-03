@@ -1,0 +1,402 @@
+[
+  {
+    "variant": "WebKit",
+    "stage": "idle",
+    "process": "viewer [23010]",
+    "timestamp": "2026-10-02 20:47:33.728 -0500",
+    "footprint_display": "30.9M",
+    "footprint_mib": 30.9,
+    "source_file": "WebKit-idle-23010.txt",
+    "source_sha256": "1aaa1e7c545443967e784441ff10498efc3fcf5db3091d3a67d722006dc3233f"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "idle",
+    "process": "com.apple.WebKit.GPU [23011]",
+    "timestamp": "2026-10-02 20:47:33.724 -0500",
+    "footprint_display": "15.6M",
+    "footprint_mib": 15.6,
+    "source_file": "WebKit-idle-23011.txt",
+    "source_sha256": "acf108632164753ecc6077bee172d49be2d228ef1702396e27ecb281dfeb3f86"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "idle",
+    "process": "com.apple.WebKit.Networking [23012]",
+    "timestamp": "2026-10-02 20:47:33.726 -0500",
+    "footprint_display": "5441K",
+    "footprint_mib": 5.3134765625,
+    "source_file": "WebKit-idle-23012.txt",
+    "source_sha256": "57ebdc2b252000b533966352a525406ee0d95b6f5853e806184ade4ec24f7463"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "idle",
+    "process": "com.apple.WebKit.WebContent [23013]",
+    "timestamp": "2026-10-02 20:47:33.723 -0500",
+    "footprint_display": "26.4M",
+    "footprint_mib": 26.4,
+    "source_file": "WebKit-idle-23013.txt",
+    "source_sha256": "29497af5b4b9bbc0c201ec848377b18a8bf80e4cbe62d996f5422930253c56a2"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "small",
+    "process": "viewer [23010]",
+    "timestamp": "2026-10-02 20:48:08.620 -0500",
+    "footprint_display": "43.6M",
+    "footprint_mib": 43.6,
+    "source_file": "WebKit-small-23010.txt",
+    "source_sha256": "49de62f958a4d518aed564d616d97bc51cf3304611f94434f6215469e023f06d"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "small",
+    "process": "com.apple.WebKit.GPU [23011]",
+    "timestamp": "2026-10-02 20:48:08.613 -0500",
+    "footprint_display": "18.4M",
+    "footprint_mib": 18.4,
+    "source_file": "WebKit-small-23011.txt",
+    "source_sha256": "77afc3e06b1aac6a1964a022610db3aa2b19920ad5fcd8e63c8b3c28cca35d15"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "small",
+    "process": "com.apple.WebKit.Networking [23012]",
+    "timestamp": "2026-10-02 20:48:08.613 -0500",
+    "footprint_display": "5457K",
+    "footprint_mib": 5.3291015625,
+    "source_file": "WebKit-small-23012.txt",
+    "source_sha256": "176eca90b7458d0812e43cb030d8bfcfc64113c9eb5a6e09b147bb8395cf93ed"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "small",
+    "process": "com.apple.WebKit.WebContent [23013]",
+    "timestamp": "2026-10-02 20:48:08.618 -0500",
+    "footprint_display": "46.4M",
+    "footprint_mib": 46.4,
+    "source_file": "WebKit-small-23013.txt",
+    "source_sha256": "4167be6e0b9be07f6a5d9e9ce4e3217bc6008fc6ee903e4be4fed62e95b3d4c5"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "medium",
+    "process": "viewer [23010]",
+    "timestamp": "2026-10-02 20:48:42.881 -0500",
+    "footprint_display": "63.7M",
+    "footprint_mib": 63.7,
+    "source_file": "WebKit-medium-23010.txt",
+    "source_sha256": "1129a81160d3aa9c35ecfa2debb0422837277deecdbf0499fcaa9768eee3433e"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "medium",
+    "process": "com.apple.WebKit.GPU [23011]",
+    "timestamp": "2026-10-02 20:48:42.879 -0500",
+    "footprint_display": "18.6M",
+    "footprint_mib": 18.6,
+    "source_file": "WebKit-medium-23011.txt",
+    "source_sha256": "7a25bf2ab2f07a95244c6e4a30e6031a050e751f91fa09fffd4b012fea9f2a47"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "medium",
+    "process": "com.apple.WebKit.Networking [23012]",
+    "timestamp": "2026-10-02 20:48:42.875 -0500",
+    "footprint_display": "5457K",
+    "footprint_mib": 5.3291015625,
+    "source_file": "WebKit-medium-23012.txt",
+    "source_sha256": "2556215751c4490f65d937e45742ad44b090dfdddf5fdfb3fede73c4c776af9e"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "medium",
+    "process": "com.apple.WebKit.WebContent [23013]",
+    "timestamp": "2026-10-02 20:48:42.878 -0500",
+    "footprint_display": "93.0M",
+    "footprint_mib": 93.0,
+    "source_file": "WebKit-medium-23013.txt",
+    "source_sha256": "97a3afa1138f456bccac44c9056a42ae6687029ae314a0c5637c1936b5c845ed"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "large",
+    "process": "viewer [23010]",
+    "timestamp": "2026-10-02 20:49:09.823 -0500",
+    "footprint_display": "120.6M",
+    "footprint_mib": 120.6,
+    "source_file": "WebKit-large-23010.txt",
+    "source_sha256": "6ff0375bbd2426feb4c6c88efba5e8efceadddcc423dc837bfc5801173a01ad3"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "large",
+    "process": "com.apple.WebKit.GPU [23011]",
+    "timestamp": "2026-10-02 20:49:09.817 -0500",
+    "footprint_display": "18.7M",
+    "footprint_mib": 18.7,
+    "source_file": "WebKit-large-23011.txt",
+    "source_sha256": "62ccea506d400b4daab636e889650e1cb6a44ad3c85806e530a402a4c0a49931"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "large",
+    "process": "com.apple.WebKit.Networking [23012]",
+    "timestamp": "2026-10-02 20:49:09.817 -0500",
+    "footprint_display": "5457K",
+    "footprint_mib": 5.3291015625,
+    "source_file": "WebKit-large-23012.txt",
+    "source_sha256": "ec7ed9b58a0889d2e7b79c35cb5366c8f3662c4ee2d8c14c08652afbf5f2585c"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "large",
+    "process": "com.apple.WebKit.WebContent [23013]",
+    "timestamp": "2026-10-02 20:49:09.820 -0500",
+    "footprint_display": "233.6M",
+    "footprint_mib": 233.6,
+    "source_file": "WebKit-large-23013.txt",
+    "source_sha256": "0d41fc2ed7764c845924d3ac1d30447a030f0edf1d0a1170700eeb15170498f1"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "very-large",
+    "process": "viewer [23010]",
+    "timestamp": "2026-10-02 20:49:50.445 -0500",
+    "footprint_display": "214.1M",
+    "footprint_mib": 214.1,
+    "source_file": "WebKit-very-large-23010.txt",
+    "source_sha256": "40ec9b1645f9cccf9548be3cb771c3b7a278e1c352a6927bf8f00a32ef50668b"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "very-large",
+    "process": "com.apple.WebKit.GPU [23011]",
+    "timestamp": "2026-10-02 20:49:50.439 -0500",
+    "footprint_display": "18.6M",
+    "footprint_mib": 18.6,
+    "source_file": "WebKit-very-large-23011.txt",
+    "source_sha256": "702fa38d07c776abb75a6d2fd74f1133f166be4d979dcb6b8804881d95348234"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "very-large",
+    "process": "com.apple.WebKit.Networking [23012]",
+    "timestamp": "2026-10-02 20:49:50.443 -0500",
+    "footprint_display": "5457K",
+    "footprint_mib": 5.3291015625,
+    "source_file": "WebKit-very-large-23012.txt",
+    "source_sha256": "72730dab35b0139690d55674459c35989cdc050de9eca3234e5eac02fbd364ce"
+  },
+  {
+    "variant": "WebKit",
+    "stage": "very-large",
+    "process": "com.apple.WebKit.WebContent [23013]",
+    "timestamp": "2026-10-02 20:49:50.440 -0500",
+    "footprint_display": "680.3M",
+    "footprint_mib": 680.3,
+    "source_file": "WebKit-very-large-23013.txt",
+    "source_sha256": "d8e8abc25a5b443e03306318870473814c8778efefcc7188cdc1d2c084ce8675"
+  },
+  {
+    "variant": "AppKit",
+    "stage": "idle",
+    "process": "viewer [22595]",
+    "timestamp": "2026-10-02 20:36:59.567 -0500",
+    "footprint_display": "34.1M",
+    "footprint_mib": 34.1,
+    "source_file": "AppKit-idle.txt",
+    "source_sha256": "2ad47f6ad299669cd06a8b0cbd4cc39c1b26f573e597c2476ee8e23ee64b564b"
+  },
+  {
+    "variant": "AppKit",
+    "stage": "small",
+    "process": "viewer [22595]",
+    "timestamp": "2026-10-02 20:37:17.009 -0500",
+    "footprint_display": "52.4M",
+    "footprint_mib": 52.4,
+    "source_file": "AppKit-small.txt",
+    "source_sha256": "7a05aeb7df108e650db3a9c2a31017997187af7f788b7410b050601c406f4298"
+  },
+  {
+    "variant": "AppKit",
+    "stage": "medium",
+    "process": "viewer [22595]",
+    "timestamp": "2026-10-02 20:37:29.452 -0500",
+    "footprint_display": "86.5M",
+    "footprint_mib": 86.5,
+    "source_file": "AppKit-medium.txt",
+    "source_sha256": "d0eca160389aa6f17718aa217edaa92db1e4b5bfe2b345a654e7201a1315e739"
+  },
+  {
+    "variant": "AppKit",
+    "stage": "large",
+    "process": "viewer [22595]",
+    "timestamp": "2026-10-02 20:37:44.158 -0500",
+    "footprint_display": "208.8M",
+    "footprint_mib": 208.8,
+    "source_file": "AppKit-large.txt",
+    "source_sha256": "083f3a086770d39ade7847f958fa5c183edbc133067055595e39e0c67f014043"
+  },
+  {
+    "variant": "AppKit",
+    "stage": "very-large",
+    "process": "viewer [22595]",
+    "timestamp": "2026-10-02 20:38:13.925 -0500",
+    "footprint_display": "497.5M",
+    "footprint_mib": 497.5,
+    "source_file": "AppKit-very-large.txt",
+    "source_sha256": "d7d33f53775320ad10c5b9e561008752cc4f7bf3b55653bbb19050419378451f"
+  },
+  {
+    "variant": "Fyne",
+    "stage": "idle",
+    "process": "viewer [24294]",
+    "timestamp": "2026-10-02 20:54:50.997 -0500",
+    "footprint_display": "170.3M",
+    "footprint_mib": 170.3,
+    "source_file": "Fyne-idle.txt",
+    "source_sha256": "e9fc53037c1b52a9326082a1f26652313ee09a0b462be24aeda3ba34c54de5f3"
+  },
+  {
+    "variant": "Fyne",
+    "stage": "small",
+    "process": "viewer [24294]",
+    "timestamp": "2026-10-02 20:55:17.127 -0500",
+    "footprint_display": "184.7M",
+    "footprint_mib": 184.7,
+    "source_file": "Fyne-small.txt",
+    "source_sha256": "9c9b6f2993224bb10a435da180578e221a86ff7ae2439e82dfd38de1b51a1b4f"
+  },
+  {
+    "variant": "Fyne",
+    "stage": "medium",
+    "process": "viewer [24294]",
+    "timestamp": "2026-10-02 20:55:45.364 -0500",
+    "footprint_display": "201.5M",
+    "footprint_mib": 201.5,
+    "source_file": "Fyne-medium.txt",
+    "source_sha256": "47502c7ee248987a700ecf0ae2f5685b12f969908b0bd8767a674678bee6edb4"
+  },
+  {
+    "variant": "Fyne",
+    "stage": "large",
+    "process": "viewer [24294]",
+    "timestamp": "2026-10-02 20:56:11.277 -0500",
+    "footprint_display": "269.1M",
+    "footprint_mib": 269.1,
+    "source_file": "Fyne-large.txt",
+    "source_sha256": "b7c83358290883cf603488cea48fcf48fd030114dd368777f705d334b703074d"
+  },
+  {
+    "variant": "Fyne",
+    "stage": "very-large",
+    "process": "viewer [24294]",
+    "timestamp": "2026-10-02 20:56:51.015 -0500",
+    "footprint_display": "429.2M",
+    "footprint_mib": 429.2,
+    "source_file": "Fyne-very-large.txt",
+    "source_sha256": "ac2e4f877a11124b707fcb8095ce20d9a80edd2deb6678850fac179b8067d51a"
+  },
+  {
+    "variant": "Qt",
+    "stage": "idle",
+    "process": "viewer [22637]",
+    "timestamp": "2026-10-02 20:38:30.643 -0500",
+    "footprint_display": "40.7M",
+    "footprint_mib": 40.7,
+    "source_file": "Qt-idle.txt",
+    "source_sha256": "6fbf9a3baa5463427dba102f1bef7d49734c29253ba419ef5d14b25510e38a36"
+  },
+  {
+    "variant": "Qt",
+    "stage": "small",
+    "process": "viewer [22637]",
+    "timestamp": "2026-10-02 20:38:49.543 -0500",
+    "footprint_display": "86.4M",
+    "footprint_mib": 86.4,
+    "source_file": "Qt-small.txt",
+    "source_sha256": "4d5d76570d99de5d5214c262e118c9125ea3e8cb9518051b529410a2ef05e242"
+  },
+  {
+    "variant": "Qt",
+    "stage": "medium",
+    "process": "viewer [22637]",
+    "timestamp": "2026-10-02 20:39:15.858 -0500",
+    "footprint_display": "146.7M",
+    "footprint_mib": 146.7,
+    "source_file": "Qt-medium.txt",
+    "source_sha256": "83ca1c5c31295e8c93e66c958f84e5eceb9a2c8bf75f4d63a80acaf56892a726"
+  },
+  {
+    "variant": "Qt",
+    "stage": "large",
+    "process": "viewer [22637]",
+    "timestamp": "2026-10-02 20:39:29.610 -0500",
+    "footprint_display": "350.5M",
+    "footprint_mib": 350.5,
+    "source_file": "Qt-large.txt",
+    "source_sha256": "2bcc92c59ac52b2c285f83a3ce7ab1aadd7953cf1de6bb63c020b48c6872a62a"
+  },
+  {
+    "variant": "Qt",
+    "stage": "very-large",
+    "process": "viewer [22637]",
+    "timestamp": "2026-10-02 20:40:26.757 -0500",
+    "footprint_display": "1.1G",
+    "footprint_mib": 1126.4,
+    "source_file": "Qt-very-large.txt",
+    "source_sha256": "09dadc840bde1b3281e5dcdae36bfb09c95fdc4c44120d10e20f68a0808f4a0c"
+  },
+  {
+    "variant": "Gio",
+    "stage": "idle",
+    "process": "viewer [24324]",
+    "timestamp": "2026-10-02 20:54:50.997 -0500",
+    "footprint_display": "103.0M",
+    "footprint_mib": 103.0,
+    "source_file": "Gio-idle.txt",
+    "source_sha256": "68d1389f26c484fbb9a19b054fc40cbfef69432b1ceac92073dcfcd709d068c8"
+  },
+  {
+    "variant": "Gio",
+    "stage": "small",
+    "process": "viewer [24324]",
+    "timestamp": "2026-10-02 20:55:17.125 -0500",
+    "footprint_display": "117.9M",
+    "footprint_mib": 117.9,
+    "source_file": "Gio-small.txt",
+    "source_sha256": "046e21f2a893404836bcab6a5b396bd17736ebceff608a3564dc77438b8bc857"
+  },
+  {
+    "variant": "Gio",
+    "stage": "medium",
+    "process": "viewer [24324]",
+    "timestamp": "2026-10-02 20:55:45.364 -0500",
+    "footprint_display": "138.8M",
+    "footprint_mib": 138.8,
+    "source_file": "Gio-medium.txt",
+    "source_sha256": "8c36d26250daba8779191d6292f71b9d353c34c87f4367a2b5e09e52cb0bb2d9"
+  },
+  {
+    "variant": "Gio",
+    "stage": "large",
+    "process": "viewer [24324]",
+    "timestamp": "2026-10-02 20:56:11.278 -0500",
+    "footprint_display": "186.9M",
+    "footprint_mib": 186.9,
+    "source_file": "Gio-large.txt",
+    "source_sha256": "c156db12ecc247d32963bb5a234b6330c178ee4f72bf25f73907c1e0dbec4678"
+  },
+  {
+    "variant": "Gio",
+    "stage": "very-large",
+    "process": "viewer [24324]",
+    "timestamp": "2026-10-02 20:56:51.015 -0500",
+    "footprint_display": "460.5M",
+    "footprint_mib": 460.5,
+    "source_file": "Gio-very-large.txt",
+    "source_sha256": "08bb8d604b997a781fb874421cfc021e35c30ae3aaea91ba13a682f71865840d"
+  }
+]
