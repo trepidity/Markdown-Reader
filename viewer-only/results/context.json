@@ -1,0 +1,60 @@
+{
+  "metric": "sample current Physical footprint, MiB; not RSS or peak",
+  "os": "26.7.1",
+  "machine": "Apple M2 Ultra",
+  "window_content_points": [
+    1080,
+    780
+  ],
+  "settled_protocol": "One fresh native bundle; idle, then sequential 8 KiB, 256 KiB, 1 MiB, 4 MiB opens. UI content verified; at least five seconds before sample.",
+  "active_processes": "One reader process at settled samples; parser helpers exit after each load. No WebKit helpers.",
+  "transient_protocol": "proc_pid_rusage v2 current physical footprint for reader plus direct parser children, polled at a target 20 ms; spikes between samples may be missed.",
+  "no_forced_gc": true,
+  "no_memory_pressure_intervention": true,
+  "fixture_manifest": {
+    "small": {
+      "bytes": 8192,
+      "sha256": "1b189f5d28e6f6305f90caff3ec9ed3b40fc667ade71e4931278b294c4bea8c4"
+    },
+    "medium": {
+      "bytes": 262144,
+      "sha256": "a56a956f21a3a38245ba9d93ddd4c6e7b0d274a790e598e0aea91b08dcedb131"
+    },
+    "large": {
+      "bytes": 1048576,
+      "sha256": "555e931502ee67b7c66701b3fdc6007973c4619c9b1dd675b0c333fb5436e7e1"
+    },
+    "very-large": {
+      "bytes": 4194304,
+      "sha256": "fea2bf1550f15d2638de881d768d48cb26ceddd5cc7a6f2eacb9b1302c81e0c1"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "Contents/MacOS/reader",
+      "bytes": 98992,
+      "sha256": "ef8b559f6a2e7e73e167d6fa2d756b09de219f30f34d63fc84be81c982977e7c"
+    },
+    {
+      "path": "Contents/Resources/markdown-reader",
+      "bytes": 2628496,
+      "sha256": "890fd3eaa22849dd86ee28e3e6560655894476916c9df975a107b48e768e8d69"
+    }
+  ],
+  "sources": {
+    "viewer-only/main.m": "dcf809e10608e1da5b1e29cf9aa327cb0eb9c222ea1fb328b8e5526ce9c2439a",
+    "cmd/markdown-reader/main.go": "9b1d06203abb70e28e670fae15b96beff817d9a68220cf8a840b190748cd7d21",
+    "scripts/build-viewer-only.sh": "86fee4207fb52ca094bccc57aadb7e1f0567da11c5aaf7de4987e24cc19285b9"
+  },
+  "baseline": "comparison/results/memory.csv and rust-comparison/results/memory.csv; historical runs, not remeasured",
+  "limitations": [
+    "Exploratory single settled sequence, two reload observations; not a statistical benchmark.",
+    "Current document only; no editing, undo, source editor, document cache, image decoding, or HTML/DOM.",
+    "Images use alt placeholders; tables use text rows; heading anchors unsupported.",
+    "Fonts, themes, feature sets, and retention differ across builds.",
+    "Other previously launched comparison applications remained running.",
+    "Settled memory may decrease between larger workloads as allocators and macOS reclaim memory.",
+    "Shared services such as WindowServer are not attributed.",
+    "initial-loads.csv excluded: its preliminary sampler incorrectly interpreted child PID counts; corrected and validated before both recorded reload traces."
+  ]
+}

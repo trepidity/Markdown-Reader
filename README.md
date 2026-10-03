@@ -49,6 +49,11 @@ There is no arbitrary custom CSS loading, syntax coloring, PDF export, or split-
 
 ## Development and verification
 
+A separate [viewer-only memory experiment](viewer-only/README.md) builds
+`dist/Markdown Reader.app`: native AppKit/TextKit 2 with a short-lived Go parser,
+no editor or document cache. Its report includes settled and loading memory,
+native read-only checks, presentation limitations, and reproduction instructions.
+
 A separate [fully Rust comparison round](rust-comparison/README.md) builds egui, Iced, Slint, FLTK, and Wry/WebKit applications with a shared Rust core. Bundles are in `dist/rust-comparison`; the report records build sizes, native smoke checks, and feature gaps against Go.
 
 Five runnable macOS builds—WebKit, AppKit/TextKit, Fyne, Qt Widgets, and Gio—are available in `dist/comparison`. See the [comparison report](comparison/README.md) for application links, measured native memory, feature differences, and rebuild instructions. The four alternative shells are comparison prototypes.

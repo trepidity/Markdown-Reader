@@ -1,0 +1,65 @@
+[
+  {
+    "stage": "idle",
+    "process_count": 1,
+    "footprint_mib": 25.4,
+    "footprint_display": "25.4M",
+    "timestamp": "2026-10-02 23:59:09.075 -0500",
+    "source_file": "reader-idle.txt",
+    "source_sha256": "e8b86cae14feae496ed426a10931fc04c85d817de01852f4f170fad2c2f2ef75"
+  },
+  {
+    "stage": "small",
+    "process_count": 1,
+    "footprint_mib": 56.4,
+    "footprint_display": "56.4M",
+    "timestamp": "2026-10-03 00:04:48.826 -0500",
+    "source_file": "reader-small.txt",
+    "source_sha256": "9f0725417a74260bdf5b9a0571454c236c74ec4f5d8d34fbef17b294d126343d"
+  },
+  {
+    "stage": "medium",
+    "process_count": 1,
+    "footprint_mib": 47.3,
+    "footprint_display": "47.3M",
+    "timestamp": "2026-10-03 00:05:06.532 -0500",
+    "source_file": "reader-medium.txt",
+    "source_sha256": "1b7db919c12d2caee1b995054aa989d31fb8b5c3fc5ccd028bc140c2e53491d7"
+  },
+  {
+    "stage": "large",
+    "process_count": 1,
+    "footprint_mib": 46.9,
+    "footprint_display": "46.9M",
+    "timestamp": "2026-10-03 00:07:39.486 -0500",
+    "source_file": "reader-large.txt",
+    "source_sha256": "257758de61bc423c0976970542cf009aacaad2113db49ad2926c4e6e818e0174"
+  },
+  {
+    "stage": "very-large",
+    "process_count": 1,
+    "footprint_mib": 86.5,
+    "footprint_display": "86.5M",
+    "timestamp": "2026-10-03 00:07:59.722 -0500",
+    "source_file": "reader-very-large.txt",
+    "source_sha256": "37d8952a4234225f25877c6c8223b2f5c9885a656a4f564f785b42218ebeee3c"
+  },
+  {
+    "stage": "scrolled",
+    "process_count": 1,
+    "footprint_mib": 77.2,
+    "footprint_display": "77.2M",
+    "timestamp": "2026-10-03 00:12:47.979 -0500",
+    "source_file": "reader-scrolled.txt",
+    "source_sha256": "4d6bea0d77d9204c1648502570223da4b9ffed80ba91df747e255c17294ea351"
+  },
+  {
+    "stage": "closed",
+    "process_count": 1,
+    "footprint_mib": 58.7,
+    "footprint_display": "58.7M",
+    "timestamp": "2026-10-03 00:13:18.153 -0500",
+    "source_file": "reader-closed.txt",
+    "source_sha256": "e8c7d60f5d980420f9dc0a3d0ddcf7fa489be86e17db44ffa55c1a0b08d198a1"
+  }
+]

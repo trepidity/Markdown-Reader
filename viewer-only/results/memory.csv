@@ -1,0 +1,8 @@
+stage,process_count,footprint_mib
+idle,1,25.4
+small,1,56.4
+medium,1,47.3
+large,1,46.9
+very-large,1,86.5
+scrolled,1,77.2
+closed,1,58.7

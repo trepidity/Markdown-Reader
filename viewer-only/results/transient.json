@@ -1,0 +1,26 @@
+[
+  {
+    "workload": "reload 4 MiB while previous 4 MiB document remains displayed",
+    "observations": 3699,
+    "observations_with_helpers": 8,
+    "target_interval_ms": 20,
+    "observed_peak_mib": 214.97,
+    "reader_mib_at_peak": 86.438,
+    "helpers_mib_at_peak": 128.532,
+    "peak_epoch_seconds": 1791004115.1523,
+    "source_file": "reload-4MiB.csv",
+    "source_sha256": "78ecb44579fc1a5c05b86e9e4f00a7ac37b80dfaf55e0580fc0bdc5fa4d32200"
+  },
+  {
+    "workload": "reload 4 MiB while previous 4 MiB document remains displayed",
+    "observations": 2480,
+    "observations_with_helpers": 15,
+    "target_interval_ms": 20,
+    "observed_peak_mib": 214.173,
+    "reader_mib_at_peak": 72.517,
+    "helpers_mib_at_peak": 141.657,
+    "peak_epoch_seconds": 1791004324.1525,
+    "source_file": "reload-4MiB-verified.csv",
+    "source_sha256": "f490c7e59a9c5a7dcbe7ab5c5c04e6b8c8c6fefdcf49f4dc048706b2487c9304"
+  }
+]
