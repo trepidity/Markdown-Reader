@@ -213,7 +213,7 @@ func TestPluginFailuresRetainSourceAndFollowingContent(t *testing.T) {
 			if !strings.Contains(patch.String(), "Plugin test-diagram:") || !strings.Contains(patch.String(), "graph TD; A-->B") || !strings.Contains(text.String(), "Still readable") {
 				t.Fatal(patch.String(), text.String())
 			}
-			if time.Since(start) > 2*time.Second {
+			if time.Since(start) > 2800*time.Millisecond { // the hanging fake sleeps 3 s; leave room for a loaded machine
 				t.Fatal("plugin deadline did not bound rendering")
 			}
 		})

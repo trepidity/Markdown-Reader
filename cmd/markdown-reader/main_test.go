@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -131,7 +133,6 @@ const (
 	codeLine  = 4 | 16
 	firstLine = 4096
 	lastLine  = 8192
-	tableRow  = 4 | 64
 )
 
 // Fails if the marker flag leaks onto item text, markers use a space instead of
@@ -174,14 +175,42 @@ func TestThematicBreakIsOneFlaggedEmptyParagraph(t *testing.T) {
 	})
 }
 
-// Fails if columns are padded by bytes instead of characters, alignment is
-// ignored, inline markup leaks into cells, or the header separator is missing.
-func TestTableRowsAreAlignedMonospacedLines(t *testing.T) {
-	expectRecords(t, "| Left | Right | Mid |\n|:--|--:|:-:|\n| `a` | bbbbbbb | é |\n", []want{
-		{"Left  │    Right  │  Mid\n", tableRow | 1},
-		{"──────┼───────────┼─────\n", tableRow},
-		{"a     │  bbbbbbb  │   é\n", tableRow},
-	})
+// The native grid lays tables out itself, so the parser must hand over every cell as plain
+// text, in order, with the column alignments. Fails if inline markup leaks into cells, the
+// header is not row 0, alignment is lost, or a table inside a list loses its indent depth.
+func TestTableIsOneStructuredRecordOfPlainCells(t *testing.T) {
+	type table struct {
+		Align []string   `json:"align"`
+		Rows  [][]string `json:"rows"`
+	}
+	decode := func(source string) (uint32, table) {
+		var found []record
+		for _, r := range renderRecords(t, source) {
+			if r.flags&tableRecord != 0 {
+				found = append(found, r)
+			}
+		}
+		if len(found) != 1 {
+			t.Fatalf("want one table record, got %d", len(found))
+		}
+		var got table
+		if err := json.Unmarshal(found[0].body, &got); err != nil {
+			t.Fatal(err)
+		}
+		return found[0].flags, got
+	}
+	flags, got := decode("| Left | Right | Mid |\n|:--|--:|:-:|\n| `a` | **bbbbbbb** | é |\n")
+	if flags != tableRecord {
+		t.Fatalf("flags %#x", flags)
+	}
+	want := table{[]string{"l", "r", "c"}, [][]string{{"Left", "Right", "Mid"}, {"a", "bbbbbbb", "é"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	flags, _ = decode("- item\n\n  | A |\n  |---|\n  | b |\n")
+	if flags != tableRecord|listLevel {
+		t.Fatalf("table in a list has flags %#x", flags)
+	}
 }
 
 // The chunked parse must be invisible: every split the chunker may choose has to

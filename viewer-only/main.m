@@ -2,6 +2,7 @@
 #import <malloc/malloc.h>
 #import <unistd.h>
 #import <errno.h>
+#import <CoreText/CoreText.h>
 
 // No WebKit or Go runtime in this process. Plugins run under the temporary
 // parser; only attributed presentation and optional SVG/PDF diagrams survive.
@@ -16,12 +17,17 @@ static NSString *const ReaderPlaceholderAttribute = @"ReaderPlaceholder";
 // MVRO1 record flags (see cmd/markdown-reader).
 enum {
  FlagBold=1, FlagItalic=2, FlagMono=4, FlagStrike=8, FlagCodeLine=16, FlagRule=32, FlagTable=64, FlagMarker=128,
- FlagCodeFirst=1<<12, FlagCodeLast=1<<13, FlagLate=1U<<28, FlagPlaceholder=1U<<29, FlagVector=1U<<30, FlagBodyEnd=1U<<31,
+ FlagCodeFirst=1<<12, FlagCodeLast=1<<13, FlagTableRecord=1<<15, FlagLate=1U<<28, FlagPlaceholder=1U<<29, FlagVector=1U<<30, FlagBodyEnd=1U<<31,
 };
 // ReaderBlock bits: kind in the low byte, quote depth << 8, list depth << 16.
 enum { BlockCode=1, BlockCodeFirst=2, BlockCodeLast=4, BlockRule=8 };
 static const CGFloat ListStep=26, QuoteStep=20, CodePad=14, CodeBandPad=8, MeasureWidth=700;
 static __weak NSView *ReaderTextView; // appearance source for fragment drawing
+// The text container spans the pane less PageMargin each side. Ordinary text sits in a centred
+// column of MeasureWidth (its lines are narrowed by ReaderTextContainer); an expanded table's
+// lines use the whole container. The column starts this far in from the container's left edge.
+static const CGFloat PageMargin=24;
+static CGFloat ColumnOffset(CGFloat containerWidth) {return MAX(12,round((containerWidth-MeasureWidth)/2));}
 
 @interface ReaderDiagramAttachment : NSTextAttachment
 @end
@@ -52,6 +58,224 @@ static NSAttributedString *ReaderDiagramString(NSData *pdf,NSString *svg,NSDicti
  return [[NSAttributedString alloc]initWithString:[NSString stringWithCharacters:&marker length:1] attributes:a];
 }
 
+#pragma mark - Text container
+
+// Ordinary text keeps the reading column. A line of an expanded table asks for a wider
+// rectangle instead: TextKit 2 asks this container for every line's rectangle.
+@interface ReaderTextContainer : NSTextContainer
+@property BOOL hasTables; // skip the attribute lookup when no table is present
+@end
+
+#pragma mark - Tables
+
+// A Markdown table is real text in the storage (so find, selection and copy work): one paragraph
+// per wrapped line, tab-separated cells, tab stops at the column positions. A layout fragment
+// draws the grid behind it. The text is regenerated whenever the width or expand state changes.
+static NSString *const ReaderTableAttribute = @"ReaderTable";       // ReaderTable, on every character of the table
+static NSString *const ReaderTableRowAttribute = @"ReaderTableRow"; // ReaderTableRowStyle, per paragraph
+static NSString *const ReaderToggleAttribute = @"ReaderTableToggle"; // ReaderTable, on the Expand / Fit button paragraph
+static const CGFloat TablePadX=10,TablePadY=6,TableMinColumn=36,TableWordCap=220,TableToggleGap=6;
+
+@interface ReaderTable : NSObject
+@property(copy) NSArray<NSArray<NSString *> *> *cells;
+@property(copy) NSArray<NSNumber *> *alignment;   // NSTextAlignment per column
+@property(copy) NSDictionary *base;               // text attributes of the surrounding block (list/quote indent)
+@property CGFloat indent;                         // list/quote indent the table sits at
+@property BOOL expanded;                          // wants the full window width
+@property(copy) NSString *layoutKey;              // what the current text was laid out for
+@property BOOL fullWidth;                         // laid out expanded: its lines use the whole container
+@end
+@implementation ReaderTable
+@end
+
+// Per-paragraph facts the fragment needs to draw the grid.
+@interface ReaderTableRowStyle : NSObject
+@property(copy) NSArray<NSNumber *> *edges;       // column boundaries, from the start of the line text
+@property CGFloat shift;                          // how far its lines start in from the container's left edge
+@property BOOL header,firstLine,lastLine,firstRow,lastRow;
+@end
+@implementation ReaderTableRowStyle
+@end
+
+static NSDictionary *TableCellAttributes(BOOL header,NSTextAlignment alignment) {
+ NSMutableParagraphStyle *p=[NSMutableParagraphStyle new];p.alignment=alignment;
+ return @{NSFontAttributeName:[NSFont systemFontOfSize:14 weight:header?NSFontWeightSemibold:NSFontWeightRegular],NSForegroundColorAttributeName:NSColor.labelColor,NSParagraphStyleAttributeName:p};
+}
+// Breaks text into lines no wider than width; a word that cannot fit is broken between characters.
+static NSArray<NSString *> *TableWrap(NSString *text,NSDictionary *attributes,CGFloat width) {
+ if(!text.length)return @[@""];
+ NSAttributedString *string=[[NSAttributedString alloc]initWithString:text attributes:attributes];
+ CTTypesetterRef typesetter=CTTypesetterCreateWithAttributedString((__bridge CFAttributedStringRef)string);
+ NSCharacterSet *space=NSCharacterSet.whitespaceAndNewlineCharacterSet;
+ NSMutableArray<NSString *> *lines=[NSMutableArray new];CFIndex start=0,length=(CFIndex)text.length;
+ while(start<length){
+  CFIndex n=CTTypesetterSuggestLineBreak(typesetter,start,MAX(8,width));
+  if(n<=0)n=CTTypesetterSuggestClusterBreak(typesetter,start,MAX(8,width));
+  if(n<=0)n=1;
+  // CoreText may break after a hyphen or slash. Keep IDs such as UC-SCH-02 and spec/08 whole
+  // by breaking at the last space instead, unless the token alone is wider than the column.
+  CFIndex end=start+n;
+  if(end<length&&![space characterIsMember:[text characterAtIndex:(NSUInteger)end-1]]&&![space characterIsMember:[text characterAtIndex:(NSUInteger)end]]){
+   NSRange blank=[text rangeOfCharacterFromSet:space options:NSBackwardsSearch range:NSMakeRange((NSUInteger)start,(NSUInteger)n)];
+   if(blank.location!=NSNotFound&&(CFIndex)blank.location>start)n=(CFIndex)blank.location+1-start;
+  }
+  [lines addObject:[[text substringWithRange:NSMakeRange((NSUInteger)start,(NSUInteger)n)] stringByTrimmingCharactersInSet:space]];
+  start+=n;
+ }
+ CFRelease(typesetter);
+ return lines.count?lines:@[@""];
+}
+static NSImage *TableToggleImage(BOOL expanded) {
+ NSString *title=expanded?@"Fit to window":@"Expand";
+ NSDictionary *a=@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],NSForegroundColorAttributeName:NSColor.secondaryLabelColor};
+ NSImage *symbol=[[NSImage imageWithSystemSymbolName:expanded?@"arrow.down.right.and.arrow.up.left":@"arrow.up.left.and.arrow.down.right" accessibilityDescription:nil] imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithHierarchicalColor:NSColor.secondaryLabelColor]];
+ NSSize size=[title sizeWithAttributes:a];CGFloat width=ceil(size.width)+34,height=20;
+ return [NSImage imageWithSize:NSMakeSize(width,height) flipped:NO drawingHandler:^BOOL(NSRect rect){
+  [[NSColor.labelColor colorWithAlphaComponent:0.08] setFill];[[NSBezierPath bezierPathWithRoundedRect:rect xRadius:10 yRadius:10] fill];
+  [symbol drawInRect:NSMakeRect(9,4,12,12)];[title drawAtPoint:NSMakePoint(25,(height-size.height)/2) withAttributes:a];
+  return YES;
+ }];
+}
+
+static NSString *TableKey(ReaderTable *table,CGFloat pane) {
+ CGFloat container=pane-2*PageMargin;
+ if(table.expanded)return [NSString stringWithFormat:@"x%.1f",container];
+ return [NSString stringWithFormat:@"f%.1f",MAX(120,container-2*ColumnOffset(container)-10-table.indent)];
+}
+
+// The table's text for a pane `pane` points wide.
+// Returns nil if the table has no cells.
+static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
+ NSUInteger count=0;for(NSArray *row in table.cells)count=MAX(count,row.count);
+ if(!count)return nil;
+ CGFloat indent=table.indent,pad=5; // NSTextContainer's default line fragment padding
+ CGFloat container=pane-2*PageMargin,offset=ColumnOffset(container);
+ CGFloat fit=MAX(120,container-2*offset-2*pad-indent),full=MAX(fit,container-2*pad-indent);
+ NSCharacterSet *space=NSCharacterSet.whitespaceAndNewlineCharacterSet;
+ NSMutableArray<NSNumber *> *natural=[NSMutableArray new],*minimum=[NSMutableArray new];
+ for(NSUInteger c=0;c<count;c++){
+  CGFloat wide=0,word=0;
+  for(NSUInteger r=0;r<table.cells.count;r++){
+   NSArray *row=table.cells[r];NSString *text=c<row.count?row[c]:@"";NSDictionary *a=TableCellAttributes(r==0,NSTextAlignmentLeft);
+   wide=MAX(wide,ceil([text sizeWithAttributes:a].width));
+   for(NSString *w in [text componentsSeparatedByCharactersInSet:space])if(w.length)word=MAX(word,ceil([w sizeWithAttributes:a].width));
+  }
+  CGFloat nat=wide+2*TablePadX;
+  [natural addObject:@(nat)];[minimum addObject:@(MIN(nat,MAX(TableMinColumn,MIN(word+2*TablePadX,TableWordCap))))];
+ }
+ CGFloat total=0,minTotal=0;for(NSUInteger c=0;c<count;c++){total+=natural[c].doubleValue;minTotal+=minimum[c].doubleValue;}
+ BOOL expandable=total>fit+1,expanded=table.expanded&&expandable;
+ CGFloat target=expanded?MIN(total,full):fit;
+ // Natural widths if they fit. Otherwise cap the long columns and leave short ones whole: find the
+ // widest cap such that every column min(natural, cap), no narrower than its longest word, still
+ // fits. If even the longest words do not fit, break words (the table never scrolls).
+ NSMutableArray<NSNumber *> *widths=[NSMutableArray new];
+ CGFloat cap=0;
+ if(total>target&&minTotal<=target){
+  CGFloat lo=0,hi=0;for(NSNumber *n in natural)hi=MAX(hi,n.doubleValue);
+  for(int i=0;i<40;i++){
+   CGFloat mid=(lo+hi)/2,sum=0;
+   for(NSUInteger c=0;c<count;c++)sum+=MAX(minimum[c].doubleValue,MIN(natural[c].doubleValue,mid));
+   if(sum<=target)lo=mid;else hi=mid;
+  }
+  cap=lo;
+ }
+ for(NSUInteger c=0;c<count;c++){
+  CGFloat nat=natural[c].doubleValue,min=minimum[c].doubleValue,w=nat;
+  if(total>target)w=minTotal<=target?MAX(min,MIN(nat,cap)):MAX(TableMinColumn,min*target/minTotal);
+  [widths addObject:@(floor(w))];
+ }
+ NSMutableArray<NSNumber *> *edges=[NSMutableArray arrayWithObject:@(indent)];CGFloat x=indent;
+ for(NSNumber *w in widths){x+=w.doubleValue;[edges addObject:@(x)];}
+ NSMutableAttributedString *out=[NSMutableAttributedString new];
+ void (^append)(NSString *,NSDictionary *)=^(NSString *text,NSDictionary *attrs){
+  NSMutableDictionary *a=[attrs mutableCopy];a[ReaderTableAttribute]=table;
+  [out appendAttributedString:[[NSAttributedString alloc]initWithString:text attributes:a]];
+ };
+ NSMutableDictionary *block=[NSMutableDictionary new];
+ if(table.base[ReaderBlockAttribute])block[ReaderBlockAttribute]=table.base[ReaderBlockAttribute]; // a table in a quote keeps its bar
+ if(expandable){
+  NSTextAttachment *button=[NSTextAttachment new];button.image=TableToggleImage(expanded);button.bounds=CGRectMake(0,-5,button.image.size.width,button.image.size.height);
+  NSMutableParagraphStyle *p=[NSMutableParagraphStyle new];p.alignment=NSTextAlignmentRight;p.firstLineHeadIndent=p.headIndent=indent;p.paragraphSpacingBefore=10;p.paragraphSpacing=TableToggleGap;
+  NSMutableDictionary *a=[block mutableCopy];a[NSParagraphStyleAttributeName]=p;a[ReaderToggleAttribute]=table;a[NSAttachmentAttributeName]=button;a[NSFontAttributeName]=[NSFont systemFontOfSize:11];
+  NSMutableAttributedString *line=[[NSMutableAttributedString alloc]initWithString:[NSString stringWithFormat:@"%C",(unichar)NSAttachmentCharacter] attributes:a];
+  NSMutableDictionary *tail=[a mutableCopy];[tail removeObjectForKey:NSAttachmentAttributeName];
+  [line appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:tail]];
+  [line addAttribute:ReaderTableAttribute value:table range:NSMakeRange(0,line.length)];[out appendAttributedString:line];
+ }
+ CGFloat shift=expanded?0:offset;
+ for(NSUInteger r=0;r<table.cells.count;r++){
+  NSArray *row=table.cells[r];BOOL header=r==0;
+  NSMutableArray<NSArray<NSString *> *> *cellLines=[NSMutableArray new];NSUInteger depth=1;
+  for(NSUInteger c=0;c<count;c++){
+   NSTextAlignment al=c<table.alignment.count?(NSTextAlignment)table.alignment[c].integerValue:NSTextAlignmentLeft;
+   NSArray<NSString *> *lines=TableWrap(c<row.count?row[c]:@"",TableCellAttributes(header,al),widths[c].doubleValue-2*TablePadX);
+   [cellLines addObject:lines];depth=MAX(depth,lines.count);
+  }
+  for(NSUInteger j=0;j<depth;j++){
+   NSMutableString *line=[NSMutableString new];NSMutableArray<NSTextTab *> *stops=[NSMutableArray new];
+   for(NSUInteger c=0;c<count;c++){
+    NSTextAlignment al=c<table.alignment.count?(NSTextAlignment)table.alignment[c].integerValue:NSTextAlignmentLeft;
+    NSArray<NSString *> *lines=cellLines[c];[line appendString:@"\t"];if(j<lines.count)[line appendString:lines[j]];
+    CGFloat left=edges[c].doubleValue,right=edges[c+1].doubleValue;
+    if(al==NSTextAlignmentRight)[stops addObject:[[NSTextTab alloc]initWithTextAlignment:NSTextAlignmentRight location:right-TablePadX options:@{}]];
+    else if(al==NSTextAlignmentCenter)[stops addObject:[[NSTextTab alloc]initWithTextAlignment:NSTextAlignmentCenter location:(left+right)/2 options:@{}]];
+    else [stops addObject:[[NSTextTab alloc]initWithTextAlignment:NSTextAlignmentLeft location:left+TablePadX options:@{}]];
+   }
+   [line appendString:@"\n"];
+   NSMutableParagraphStyle *p=[NSMutableParagraphStyle new];p.firstLineHeadIndent=p.headIndent=indent;p.tabStops=stops;p.defaultTabInterval=0;
+   p.lineBreakMode=NSLineBreakByClipping;p.lineSpacing=2;
+   p.paragraphSpacingBefore=j==0?TablePadY:0;p.paragraphSpacing=j+1==depth?TablePadY:0;
+   ReaderTableRowStyle *style=[ReaderTableRowStyle new];style.edges=edges;style.shift=shift;style.header=header;
+   style.firstLine=j==0;style.lastLine=j+1==depth;style.firstRow=r==0;style.lastRow=r+1==table.cells.count;
+   NSMutableDictionary *a=[block mutableCopy];a[NSParagraphStyleAttributeName]=p;a[ReaderTableRowAttribute]=style;
+   a[NSFontAttributeName]=TableCellAttributes(header,NSTextAlignmentLeft)[NSFontAttributeName];a[NSForegroundColorAttributeName]=NSColor.labelColor;
+   append(line,a);
+  }
+ }
+ table.layoutKey=TableKey(table,pane);
+ table.fullWidth=expanded;
+ return out;
+}
+
+@implementation ReaderTextContainer
+- (NSRect)lineFragmentRectForProposedRect:(NSRect)proposed atIndex:(NSUInteger)index writingDirection:(NSWritingDirection)direction remainingRect:(NSRect *)remaining {
+ NSRect rect=[super lineFragmentRectForProposedRect:proposed atIndex:index writingDirection:direction remainingRect:remaining];
+ if(self.hasTables){
+  NSTextContentManager *content=self.textLayoutManager.textContentManager;
+  NSTextStorage *storage=[content isKindOfClass:NSTextContentStorage.class]?((NSTextContentStorage *)content).textStorage:nil;
+  ReaderTable *table=storage&&index<storage.length?[storage attribute:ReaderTableAttribute atIndex:index effectiveRange:NULL]:nil;
+  if(table.fullWidth)return rect; // an expanded table keeps the whole container
+ }
+ CGFloat offset=ColumnOffset(self.size.width); // everything else: the centred reading column
+ rect.origin.x+=offset;rect.size.width=MAX(0,rect.size.width-2*offset);
+ return rect;
+}
+@end
+
+// The page: a text view that also handles the Expand / Fit to window button above a table.
+@interface ReaderPageView : NSTextView
+@property(copy) void (^onToggle)(ReaderTable *table);
+@end
+@implementation ReaderPageView
+- (ReaderTable *)toggleAtPoint:(NSPoint)point {
+ if(!((ReaderTextContainer *)self.textContainer).hasTables)return nil;
+ NSPoint origin=self.textContainerOrigin,local=NSMakePoint(point.x-origin.x,point.y-origin.y);
+ NSTextLayoutFragment *fragment=[self.textLayoutManager textLayoutFragmentForPosition:local];
+ NSTextParagraph *paragraph=[fragment.textElement isKindOfClass:NSTextParagraph.class]?(NSTextParagraph *)fragment.textElement:nil;
+ ReaderTable *table=paragraph.attributedString.length?[paragraph.attributedString attribute:ReaderToggleAttribute atIndex:0 effectiveRange:NULL]:nil;
+ NSTextLineFragment *line=fragment.textLineFragments.firstObject;
+ if(!table||!line)return nil;
+ CGRect pill=CGRectOffset(line.typographicBounds,fragment.layoutFragmentFrame.origin.x,fragment.layoutFragmentFrame.origin.y);
+ return CGRectContainsPoint(CGRectInset(pill,-4,-4),local)?table:nil;
+}
+- (void)mouseDown:(NSEvent *)event {
+ ReaderTable *table=[self toggleAtPoint:[self convertPoint:event.locationInWindow fromView:nil]];
+ if(table&&self.onToggle){self.onToggle(table);return;}
+ [super mouseDown:event];
+}
+@end
+
 #pragma mark - Layout fragment decorations
 
 // Draws code-block bands, quotation bars and thematic rules behind the text.
@@ -81,7 +305,8 @@ static CGPathRef BandPath(CGRect r,BOOL roundTop,BOOL roundBottom,CGFloat radius
 - (void)drawAtPoint:(CGPoint)point inContext:(CGContextRef)context {
  uint32_t block=self.block;CGRect frame=self.layoutFragmentFrame;
  NSTextContainer *c=self.textLayoutManager.textContainer;
- CGFloat pad=c.lineFragmentPadding,width=c?c.size.width:frame.size.width,left=point.x-frame.origin.x+pad;
+ CGFloat total=c?c.size.width:frame.size.width,offset=ColumnOffset(total);
+ CGFloat pad=c.lineFragmentPadding,width=total-2*offset,left=point.x-frame.origin.x+offset+pad; // the reading column, not the container
  CGFloat height=frame.size.height;NSUInteger quotes=(block>>8)&255,lists=(block>>16)&255;
  NSArray<NSTextLineFragment *> *lines=self.textLineFragments;
  void (^draw)(void)=^{
@@ -111,6 +336,47 @@ static CGPathRef BandPath(CGRect r,BOOL roundTop,BOOL roundBottom,CGFloat radius
  };
  NSAppearance *appearance=ReaderTextView.effectiveAppearance;
  if(appearance)[appearance performAsCurrentDrawingAppearance:draw];else draw();
+ [super drawAtPoint:point inContext:context];
+}
+@end
+
+// Draws a table's header shading, rules and column lines behind its text lines.
+@interface ReaderTableRowFragment : ReaderBlockFragment
+@property ReaderTableRowStyle *row;
+@end
+@implementation ReaderTableRowFragment
+- (CGFloat)tableOriginX:(CGFloat)pointX {
+ CGRect frame=self.layoutFragmentFrame;NSTextContainer *c=self.textLayoutManager.textContainer;
+ return pointX-frame.origin.x+self.row.shift+(c?c.lineFragmentPadding:5);
+}
+- (CGRect)renderingSurfaceBounds {
+ CGRect frame=self.layoutFragmentFrame;CGFloat left=[self tableOriginX:0]+self.row.edges.firstObject.doubleValue,right=[self tableOriginX:0]+self.row.edges.lastObject.doubleValue;
+ return CGRectUnion([super renderingSurfaceBounds],CGRectMake(left-2,-2,right-left+4,frame.size.height+4));
+}
+- (void)drawAtPoint:(CGPoint)point inContext:(CGContextRef)context {
+ ReaderTableRowStyle *row=self.row;NSArray<NSTextLineFragment *> *lines=self.textLineFragments;
+ if(row&&lines.count){
+  CGFloat originX=[self tableOriginX:point.x],height=self.layoutFragmentFrame.size.height;
+  CGFloat top=row.firstLine?CGRectGetMinY(lines.firstObject.typographicBounds)-TablePadY:-0.5;
+  CGFloat bottom=row.lastLine?CGRectGetMaxY(lines.lastObject.typographicBounds)+TablePadY:height+0.5;
+  CGFloat left=originX+row.edges.firstObject.doubleValue,right=originX+row.edges.lastObject.doubleValue;
+  void (^draw)(void)=^{
+   CGContextSaveGState(context);
+   // Opaque blends, so neighbouring fragments that overlap by half a point cannot double up.
+   if(row.header){CGContextSetFillColorWithColor(context,[[NSColor.textBackgroundColor blendedColorWithFraction:0.09 ofColor:NSColor.labelColor] CGColor]);CGContextFillRect(context,CGRectMake(left,point.y+top,right-left,bottom-top));}
+   CGContextSetFillColorWithColor(context,NSColor.separatorColor.CGColor);
+   if(row.firstRow&&row.firstLine)CGContextFillRect(context,CGRectMake(left,point.y+top,right-left,1));
+   if(row.lastLine)CGContextFillRect(context,CGRectMake(left,point.y+bottom-(row.lastRow?1:0.5),right-left,1));
+   for(NSUInteger i=0;i<row.edges.count;i++){
+    BOOL outer=i==0||i+1==row.edges.count;
+    CGContextSetFillColorWithColor(context,[outer?[NSColor.textBackgroundColor blendedColorWithFraction:0.3 ofColor:NSColor.labelColor]:[NSColor.textBackgroundColor blendedColorWithFraction:0.17 ofColor:NSColor.labelColor] CGColor]);
+    CGContextFillRect(context,CGRectMake(originX+row.edges[i].doubleValue-0.5,point.y+top,1,bottom-top));
+   }
+   CGContextRestoreGState(context);
+  };
+  NSAppearance *appearance=ReaderTextView.effectiveAppearance;
+  if(appearance)[appearance performAsCurrentDrawingAppearance:draw];else draw();
+ }
  [super drawAtPoint:point inContext:context];
 }
 @end
@@ -183,15 +449,17 @@ typedef NS_ENUM(NSInteger,ReaderDecodeResult){ReaderDecodeComplete,ReaderDecodeN
 }
 @property(readonly) NSTextStorage *storage;
 @property(readonly) NSUInteger diagrams;
+@property(readonly) NSUInteger tables;
 // Diagrams may follow the text. At the body-end record the finished storage is handed to
 // bodyReady (which must adopt it; the decoder never touches it again) and every later
 // diagram record goes to late, on this thread.
-@property(copy) void (^bodyReady)(NSTextStorage *storage,NSUInteger placeholders);
+@property(copy) void (^bodyReady)(NSTextStorage *storage,NSUInteger placeholders,NSUInteger tables);
 @property(copy) void (^late)(uint32_t flags,NSData *body,NSData *meta);
 @end
 @implementation ReaderDecoder {
  NSUInteger _placeholders;BOOL _handedOff;
 }
+@synthesize tables=_tables;
 - (instancetype)init {if((self=[super init])){_storage=[NSTextStorage new];_pending=[NSMutableData dataWithCapacity:64*1024];}return self;}
 - (void)dealloc {free(_buffer);}
 static uint32_t NormalizeFlags(uint32_t flags) {
@@ -238,6 +506,25 @@ static BOOL AllowedLink(const uint8_t *s,uint32_t n) {
  [_storage appendAttributedString:diagram];_diagrams++;
  return YES;
 }
+// A table is stored as its cells; the reader turns it into text lines for the current width.
+- (BOOL)tableWithBody:(const uint8_t *)body length:(uint32_t)length flags:(uint32_t)flags {
+ if(length>8*1024*1024)return NO;
+ id json=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytesNoCopy:(void *)body length:length freeWhenDone:NO] options:0 error:nil];
+ NSArray *rows=[json isKindOfClass:NSDictionary.class]?json[@"rows"]:nil,*align=[json isKindOfClass:NSDictionary.class]?json[@"align"]:nil;
+ if(![rows isKindOfClass:NSArray.class]||!rows.count||rows.count>5000||![align isKindOfClass:NSArray.class])return NO;
+ for(id row in rows){
+  if(![row isKindOfClass:NSArray.class]||[row count]>64)return NO;
+  for(id cell in row)if(![cell isKindOfClass:NSString.class])return NO;
+ }
+ NSMutableArray<NSNumber *> *alignment=[NSMutableArray new];
+ for(id a in align)[alignment addObject:@([a isEqual:@"r"]?NSTextAlignmentRight:[a isEqual:@"c"]?NSTextAlignmentCenter:NSTextAlignmentLeft)];
+ NSDictionary *base=[self attributes:flags];
+ ReaderTable *table=[ReaderTable new];table.cells=rows;table.alignment=alignment;table.base=base;
+ table.indent=((NSParagraphStyle *)base[NSParagraphStyleAttributeName]).headIndent;++_tables;
+ NSMutableDictionary *a=[base mutableCopy];a[ReaderTableAttribute]=table;
+ [_storage appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:a]];
+ return YES;
+}
 // Reserves the line a late diagram will replace; the trailing newline stays outside the mark.
 - (BOOL)placeholderWithBody:(const uint8_t *)body length:(uint32_t)length flags:(uint32_t)flags {
  uint32_t style=flags&~FlagPlaceholder&~0xFFu;
@@ -269,8 +556,9 @@ static BOOL AllowedLink(const uint8_t *s,uint32_t n) {
   }
   if(flags==FlagBodyEnd){
    ok=[self flush];
-   if(ok){[_storage endEditing];_handedOff=YES;if(self.bodyReady)self.bodyReady(_storage,_placeholders);}
+   if(ok){[_storage endEditing];_handedOff=YES;if(self.bodyReady)self.bodyReady(_storage,_placeholders,_tables);}
   }else if(flags&FlagPlaceholder)ok=[self flush]&&[self placeholderWithBody:_buffer length:length flags:flags];
+  else if(flags&FlagTableRecord)ok=[self flush]&&[self tableWithBody:_buffer length:length flags:flags];
   else if(flags==FlagVector)ok=[self flush]&&[self vectorWithBody:_buffer length:length svgLength:linkLength];
   else if(linkLength){
    NSString *link=nil;
@@ -390,6 +678,7 @@ static BOOL MarkdownName(NSString *name) {
 @property NSMutableDictionary<NSString *,ReaderDocument *> *positions; // where the reader was in each document this session
 @property CGFloat restoredY;
 @property NSTimer *findTimer;
+@property BOOL hasTables;
 @property NSString *findStatus;
 @property NSString *findQuery;
 @property NSRange findSelection;
@@ -415,7 +704,11 @@ static BOOL MarkdownName(NSString *name) {
  // (title), its folder (subtitle) and the proxy icon (representedURL). Actions live in menus.
  self.window.titlebarAppearsTransparent=YES;self.window.backgroundColor=NSColor.textBackgroundColor;
  [self refreshTitle];
- self.text=[[NSTextView alloc]initUsingTextLayoutManager:YES];self.text.editable=NO;self.text.selectable=YES;self.text.allowsUndo=NO;self.text.usesFindBar=YES;self.text.delegate=self;
+ NSTextContentStorage *contentStorage=[NSTextContentStorage new];NSTextLayoutManager *layoutManager=[NSTextLayoutManager new];[contentStorage addTextLayoutManager:layoutManager];
+ ReaderTextContainer *textContainer=[[ReaderTextContainer alloc]initWithSize:NSMakeSize(0,CGFLOAT_MAX)];layoutManager.textContainer=textContainer;
+ ReaderPageView *page=[[ReaderPageView alloc]initWithFrame:NSMakeRect(0,0,1000,700) textContainer:textContainer];
+ __weak Reader *weakSelf=self;page.onToggle=^(ReaderTable *table){[weakSelf toggleTable:table];};
+ self.text=page;self.text.editable=NO;self.text.selectable=YES;self.text.allowsUndo=NO;self.text.usesFindBar=YES;self.text.delegate=self;
  ReaderTextView=self.text;self.text.textLayoutManager.delegate=self;
  self.text.textContainerInset=NSMakeSize(36,28);self.text.verticallyResizable=YES;self.text.horizontallyResizable=NO;
  self.text.autoresizingMask=NSViewWidthSizable;self.text.textContainer.widthTracksTextView=YES;
@@ -464,14 +757,36 @@ static BOOL MarkdownName(NSString *name) {
  if(!initial&&NSProcessInfo.processInfo.arguments.count>1)initial=NSProcessInfo.processInfo.arguments[1];
  if(initial)[self openPath:initial];
 }
+// Turns each table's cells into text for the current width. `only` limits it to one table.
+- (void)layoutTablesIn:(NSTextStorage *)storage only:(ReaderTable *)only {
+ CGFloat pane=self.scroll.contentView.bounds.size.width;
+ NSMutableArray<NSValue *> *ranges=[NSMutableArray new];NSMutableArray<ReaderTable *> *tables=[NSMutableArray new];
+ [storage enumerateAttribute:ReaderTableAttribute inRange:NSMakeRange(0,storage.length) options:0 usingBlock:^(id value,NSRange range,BOOL *stop){
+  if(value&&(!only||value==only)){[ranges addObject:[NSValue valueWithRange:range]];[tables addObject:value];}
+ }];
+ [storage beginEditing];
+ for(NSInteger i=(NSInteger)tables.count-1;i>=0;i--){ // back to front, so earlier ranges stay valid
+  ReaderTable *table=tables[(NSUInteger)i];
+  if(!only&&[table.layoutKey isEqualToString:TableKey(table,pane)])continue;
+  NSAttributedString *text=TableText(table,pane);
+  if(text)[storage replaceCharactersInRange:ranges[(NSUInteger)i].rangeValue withAttributedString:text];
+ }
+ [storage endEditing];
+ ((ReaderTextContainer *)self.text.textContainer).hasTables=YES;
+}
+- (void)toggleTable:(ReaderTable *)table {table.expanded=!table.expanded;[self layoutTablesIn:self.text.textStorage only:table];}
+// The container spans the pane less a margin; the text container hook centres ordinary text in
+// a column of MeasureWidth, so only the table layout needs to follow width changes.
 - (void)updateMeasure:(NSNotification *)note {
- CGFloat width=self.scroll.contentView.bounds.size.width;
- NSSize inset=NSMakeSize(round(MAX(36,(width-MeasureWidth)/2)),28);
+ NSSize inset=NSMakeSize(PageMargin,28);
  if(!NSEqualSizes(inset,self.text.textContainerInset))self.text.textContainerInset=inset; // no-op when unchanged: no layout loop
+ if(self.hasTables)[self layoutTablesIn:self.text.textStorage only:nil];
 }
 - (NSTextLayoutFragment *)textLayoutManager:(NSTextLayoutManager *)manager textLayoutFragmentForLocation:(id<NSTextLocation>)location inTextElement:(NSTextElement *)element {
  if([element isKindOfClass:NSTextParagraph.class]){
   NSAttributedString *s=((NSTextParagraph *)element).attributedString;
+  ReaderTableRowStyle *row=s.length?[s attribute:ReaderTableRowAttribute atIndex:0 effectiveRange:NULL]:nil;
+  if(row){ReaderTableRowFragment *f=[[ReaderTableRowFragment alloc]initWithTextElement:element range:element.elementRange];f.row=row;f.block=[[s attribute:ReaderBlockAttribute atIndex:0 effectiveRange:NULL] unsignedIntValue];return f;}
   NSNumber *block=s.length?[s attribute:ReaderBlockAttribute atIndex:0 effectiveRange:NULL]:nil;
   if(block){ReaderBlockFragment *f=[[ReaderBlockFragment alloc]initWithTextElement:element range:element.elementRange];f.block=block.unsignedIntValue;return f;}
  }
@@ -480,6 +795,9 @@ static BOOL MarkdownName(NSString *name) {
 // Installs storage without copying its contents. Falls back to a copy only if
 // the TextKit 2 content storage is unavailable.
 - (void)install:(NSTextStorage *)storage {
+ if(!storage.length)self.hasTables=NO;
+ if(self.hasTables)[self layoutTablesIn:storage only:nil];
+ ((ReaderTextContainer *)self.text.textContainer).hasTables=self.hasTables;
  NSTextContentStorage *content=(NSTextContentStorage *)self.text.textLayoutManager.textContentManager;
  if([content isKindOfClass:NSTextContentStorage.class]){content.textStorage=storage;self.swapFallback=self.text.textStorage!=storage;}
  else self.swapFallback=YES;
@@ -548,7 +866,7 @@ static BOOL MarkdownName(NSString *name) {
  NSString *registry=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Plugins"];
  NSArray *arguments=self.pluginsEnabled?@[@"--plugins",registry,absolute]:@[absolute];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
-  NSTextStorage *storage=nil;NSString *message=nil;NSUInteger diagrams=0;__block BOOL begun=NO,handedOff=NO;
+  NSTextStorage *storage=nil;NSString *message=nil;NSUInteger diagrams=0,tables=0;__block BOOL begun=NO,handedOff=NO;
   @autoreleasepool{
    NSTask *task=[NSTask new];task.executableURL=[NSURL fileURLWithPath:helper];task.arguments=arguments;
    NSPipe *output=[NSPipe pipe],*errors=[NSPipe pipe];task.standardOutput=output;task.standardError=errors;
@@ -568,13 +886,13 @@ static BOOL MarkdownName(NSString *name) {
     @autoreleasepool{
      ReaderDecoder *decoder=[ReaderDecoder new];
      // Text first: the reader sees and can scroll the document while diagrams are still rendering.
-     decoder.bodyReady=^(NSTextStorage *body,NSUInteger placeholders){
+     decoder.bodyReady=^(NSTextStorage *body,NSUInteger placeholders,NSUInteger tables){
       handedOff=YES;
       dispatch_sync(dispatch_get_main_queue(),^{
        if(load.cancelled)return;
        ReaderDocument *document=[self documentForPath:absolute];
        document.path=absolute;self.document=document;
-       [self install:body];self.diagrams=0;self.pendingTotal=placeholders;self.pendingDone=0;[self restoreViewState];[self refreshTitle];
+       self.hasTables=tables>0;[self install:body];self.diagrams=0;self.pendingTotal=placeholders;self.pendingDone=0;[self restoreViewState];[self refreshTitle];
       });
      };
      decoder.late=^(uint32_t flags,NSData *body,NSData *meta){dispatch_sync(dispatch_get_main_queue(),^{if(!load.cancelled)[self patchDiagram:flags body:body meta:meta];});};
@@ -582,7 +900,7 @@ static BOOL MarkdownName(NSString *name) {
       // The stream has begun: release the previous document before the new one grows.
       begun=YES;dispatch_sync(dispatch_get_main_queue(),^{if(load.cancelled)return;[self install:[NSTextStorage new]];self.diagrams=0;});
      }];
-     if(result==ReaderDecodeComplete&&!handedOff){storage=decoder.storage;diagrams=decoder.diagrams;}
+     if(result==ReaderDecodeComplete&&!handedOff){storage=decoder.storage;diagrams=decoder.diagrams;tables=decoder.tables;}
     }
     [outputHandle closeFile];
     if(task.running&&result!=ReaderDecodeComplete)[task terminate];
@@ -604,7 +922,7 @@ static BOOL MarkdownName(NSString *name) {
     // Reloading the same file keeps the reader's place; a different file starts at the top.
     ReaderDocument *document=[self documentForPath:absolute];
     document.path=absolute;self.document=document;
-    [self install:storage];self.diagrams=diagrams;[self restoreViewState];
+    self.hasTables=tables>0;[self install:storage];self.diagrams=diagrams;[self restoreViewState];
    }else if(begun){
     // The previous document was already released; never show a partial document.
     [self install:[NSTextStorage new]];self.diagrams=0;[self revealInRail:self.document.path];
@@ -799,7 +1117,8 @@ static BOOL MarkdownName(NSString *name) {
 }
 - (void)application:(NSApplication *)app openFiles:(NSArray<NSString *> *)files {if(files.count){if(self.window)[self openPath:files.lastObject];else self.pendingPath=files.lastObject;}[app replyToOpenOrPrint:NSApplicationDelegateReplySuccess];}
 - (BOOL)textView:(NSTextView *)view clickedOnLink:(id)link atIndex:(NSUInteger)index {
- NSString *href=[link description];NSURL *url=[NSURL URLWithString:href];NSString *scheme=url.scheme.lowercaseString;
+ NSString *href=[link description];
+ NSURL *url=[NSURL URLWithString:href];NSString *scheme=url.scheme.lowercaseString;
  if([href hasPrefix:@"#"]){[self notify:@"Heading links are not supported in this memory-focused build."];return YES;}
  if([@[@"https",@"http",@"mailto"] containsObject:scheme]){[NSWorkspace.sharedWorkspace openURL:url];return YES;}
  if(!scheme.length&&!url.host.length&&url.path.length){NSString *p=url.path;if(!p.isAbsolutePath)p=[self.document.path.stringByDeletingLastPathComponent stringByAppendingPathComponent:p];[self load:p];}

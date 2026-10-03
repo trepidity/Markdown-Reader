@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -29,12 +30,14 @@ const (
 	mono          uint32 = 1 << 2  // inline code span, code block or table text
 	codeBlockLine uint32 = 1 << 4  // one line of a fenced or indented code block
 	thematicBreak uint32 = 1 << 5  // empty paragraph drawn as a rule
-	tableText     uint32 = 1 << 6  // one aligned table row
 	listMarker    uint32 = 1 << 7  // "•\t" or "N.\t" opening a list item
 	codeFirst     uint32 = 1 << 12 // first line of a code block
 	codeLast      uint32 = 1 << 13 // last line of a code block
-	listDepth     uint32 = 1 << 16 // bits 16..23: list nesting
-	quoteDepth    uint32 = 1 << 24 // bits 24..27: block quote nesting
+	// tableRecord: the body is JSON {"align":["l"|"r"|"c",…],"rows":[[cell,…],…]}, row 0 the
+	// header. The reader lays the grid out itself; list/quote depth bits still apply.
+	tableRecord uint32 = 1 << 15
+	listDepth   uint32 = 1 << 16 // bits 16..23: list nesting
+	quoteDepth  uint32 = 1 << 24 // bits 24..27: block quote nesting
 )
 
 // cellText appends a table cell's plain text: link labels, code span text and
@@ -150,65 +153,31 @@ func run(args []string, out io.Writer) error {
 		}
 	}
 	emitTable := func(table *east.Table, flags uint32) {
-		flags |= mono | tableText
-		var rows [][]string
-		var widths []int
+		var grid struct {
+			Align []string   `json:"align"`
+			Rows  [][]string `json:"rows"`
+		}
 		for row := table.FirstChild(); row != nil; row = row.NextSibling() {
 			var cells []string
 			for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 				var b strings.Builder
 				cellText(&b, cell, source, false)
-				s := strings.TrimSpace(b.String())
-				if len(widths) <= len(cells) {
-					widths = append(widths, 0)
-				}
-				widths[len(cells)] = max(widths[len(cells)], utf8.RuneCountInString(s))
-				cells = append(cells, s)
+				cells = append(cells, strings.TrimSpace(b.String()))
 			}
-			rows = append(rows, cells)
+			grid.Rows = append(grid.Rows, cells)
 		}
-		var line strings.Builder
-		for r, cells := range rows {
-			line.Reset()
-			for c, width := range widths {
-				if c > 0 {
-					line.WriteString("  │  ")
-				}
-				cell := ""
-				if c < len(cells) {
-					cell = cells[c]
-				}
-				pad := width - utf8.RuneCountInString(cell)
-				left := 0
-				if c < len(table.Alignments) {
-					switch table.Alignments[c] {
-					case east.AlignRight:
-						left = pad
-					case east.AlignCenter:
-						left = pad / 2
-					}
-				}
-				line.WriteString(strings.Repeat(" ", left))
-				line.WriteString(cell)
-				line.WriteString(strings.Repeat(" ", pad-left))
+		for _, a := range table.Alignments {
+			switch a {
+			case east.AlignRight:
+				grid.Align = append(grid.Align, "r")
+			case east.AlignCenter:
+				grid.Align = append(grid.Align, "c")
+			default:
+				grid.Align = append(grid.Align, "l")
 			}
-			header := r == 0 && table.FirstChild().Kind() == east.KindTableHeader
-			rowFlags := flags
-			if header {
-				rowFlags |= 1
-			}
-			emit([]byte(strings.TrimRight(line.String(), " ")+"\n"), rowFlags, nil)
-			if header {
-				line.Reset()
-				for c, width := range widths {
-					if c > 0 {
-						line.WriteString("──┼──")
-					}
-					line.WriteString(strings.Repeat("─", width))
-				}
-				line.WriteString("\n")
-				emit([]byte(line.String()), flags, nil)
-			}
+		}
+		if body, err := json.Marshal(grid); err == nil {
+			emit(body, flags|tableRecord, nil)
 		}
 	}
 	var deferred []deferredDiagram
