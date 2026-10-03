@@ -1,0 +1,102 @@
+{
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "hardware": "Apple M2 Ultra",
+  "window_content_points": [
+    1080,
+    780
+  ],
+  "metric": "sample current Physical footprint; MiB",
+  "trial_count": 1,
+  "stages": [
+    "idle",
+    "small",
+    "medium",
+    "large",
+    "very-large"
+  ],
+  "minimum_settle_seconds_after_visible_preview": 5,
+  "sample_duration_seconds": 1,
+  "fresh_process_per_variant": true,
+  "sequential_document_opens": true,
+  "all_five_apps_running_during_sampling": true,
+  "forced_gc": false,
+  "fixtures": {
+    "small": {
+      "bytes": 8192,
+      "sha256": "1b189f5d28e6f6305f90caff3ec9ed3b40fc667ade71e4931278b294c4bea8c4"
+    },
+    "medium": {
+      "bytes": 262144,
+      "sha256": "a56a956f21a3a38245ba9d93ddd4c6e7b0d274a790e598e0aea91b08dcedb131"
+    },
+    "large": {
+      "bytes": 1048576,
+      "sha256": "555e931502ee67b7c66701b3fdc6007973c4619c9b1dd675b0c333fb5436e7e1"
+    },
+    "very-large": {
+      "bytes": 4194304,
+      "sha256": "fea2bf1550f15d2638de881d768d48cb26ceddd5cc7a6f2eacb9b1302c81e0c1"
+    }
+  },
+  "builds": [
+    {
+      "build": "Rust egui",
+      "bytes": 6815200,
+      "sha256": "ac52c8d70088c93bb6662874f40d0c27fdccee56823c710d6f254ae132369787"
+    },
+    {
+      "build": "Rust iced",
+      "bytes": 4563312,
+      "sha256": "ccd8d692ef74235b94fcba1ad5a70e1e075c856f194ecf3cbe7a1ed9005f8f6e"
+    },
+    {
+      "build": "Rust slint",
+      "bytes": 13203872,
+      "sha256": "5616bdce0175031a7f4111ebb5b64bef85bd935ca1c22f5ce89e0f0ee091ca48"
+    },
+    {
+      "build": "Rust fltk",
+      "bytes": 1446816,
+      "sha256": "23a33212096d86d34a8e771a7755e44508bcf6fa75169044927fb168164bf518"
+    },
+    {
+      "build": "Rust wry",
+      "bytes": 1662848,
+      "sha256": "2fee8846855882a553a24220673ecfbbfea29e4233b1cbe772a0e87a5d19424c"
+    }
+  ],
+  "wry_processes": {
+    "host": 43813,
+    "GPU": 43814,
+    "Networking": 43815,
+    "WebContent": 43816
+  },
+  "wry_attribution": "Helpers newly appeared with fresh Wry launch; other preexisting WebKit helpers excluded; identities rechecked after sampling.",
+  "raw_sample_directory": "/private/tmp/markdown-rust-memory",
+  "native_search": {
+    "fixture": "comparison/fixtures/features.md",
+    "query": "Search needle",
+    "expected_matching_lines": [
+      33
+    ],
+    "observed_matching_lines": {
+      "egui": [
+        33
+      ],
+      "iced": [
+        33
+      ],
+      "slint": [
+        33
+      ],
+      "fltk": [
+        33
+      ],
+      "wry": [
+        33
+      ]
+    },
+    "performed_after_memory_samples": true
+  },
+  "baseline": "comparison/results/memory.csv; prior Go run, not rerun with Rust"
+}

@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-10-03T02:52:20.936521+00:00",
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "metric": "signed executable bytes; excludes system frameworks and runtime memory",
+  "builds": [
+    {
+      "build": "Rust egui",
+      "bytes": 6815200,
+      "sha256": "ac52c8d70088c93bb6662874f40d0c27fdccee56823c710d6f254ae132369787"
+    },
+    {
+      "build": "Rust iced",
+      "bytes": 4563312,
+      "sha256": "ccd8d692ef74235b94fcba1ad5a70e1e075c856f194ecf3cbe7a1ed9005f8f6e"
+    },
+    {
+      "build": "Rust slint",
+      "bytes": 13203872,
+      "sha256": "5616bdce0175031a7f4111ebb5b64bef85bd935ca1c22f5ce89e0f0ee091ca48"
+    },
+    {
+      "build": "Rust fltk",
+      "bytes": 1446816,
+      "sha256": "23a33212096d86d34a8e771a7755e44508bcf6fa75169044927fb168164bf518"
+    },
+    {
+      "build": "Rust wry",
+      "bytes": 1662848,
+      "sha256": "2fee8846855882a553a24220673ecfbbfea29e4233b1cbe772a0e87a5d19424c"
+    },
+    {
+      "build": "Go WebKit",
+      "bytes": 6087232,
+      "sha256": "741b7af694bc66ae60eb81a89de4d2be592fd0d2ceebb9c0e1e8b104cda46750"
+    }
+  ]
+}

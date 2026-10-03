@@ -37,3 +37,5 @@ go.work.sum
 /comparison/build/
 /.cache/
 .DS_Store
+
+/rust-comparison/target/

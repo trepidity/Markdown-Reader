@@ -1,0 +1,47 @@
+[package]
+name = "markdown-viewer-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tempfile = "3"
+pulldown-cmark = "0.13"
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"], optional = true }
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "x11", "wayland", "thread-pool"], optional = true }
+
+slint = { version = "1.18", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-2"], optional = true }
+fltk = { version = "1.5", optional = true }
+wry = { version = "0.55", optional = true }
+tao = { version = "0.34", optional = true }
+
+[features]
+egui-ui = ["dep:eframe"]
+iced-ui = ["dep:iced"]
+slint-ui = ["dep:slint"]
+fltk-ui = ["dep:fltk"]
+wry-ui = ["dep:wry", "dep:tao"]
+
+[[bin]]
+name = "viewer-egui"
+required-features = ["egui-ui"]
+
+[[bin]]
+name = "viewer-iced"
+required-features = ["iced-ui"]
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[[bin]]
+name = "viewer-slint"
+required-features = ["slint-ui"]
+[[bin]]
+name = "viewer-fltk"
+required-features = ["fltk-ui"]
+[[bin]]
+name = "viewer-wry"
+required-features = ["wry-ui"]

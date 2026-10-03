@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'">
+<style>body{margin:20px;font:16px system-ui;background:#faf9f6;color:#252525}nav{display:flex;gap:8px;margin-bottom:10px}input{flex:1;min-width:100px}button,input{font:14px system-ui;padding:6px}article,textarea{box-sizing:border-box;width:100%;height:calc(100vh - 160px);overflow:auto}textarea{font:15px monospace}article{padding:15px 45px}pre{background:#eee;padding:12px}#status{font-size:13px;margin:10px 0}p{white-space:pre-wrap}</style></head><body>
+<nav><input id="path" placeholder="Path / Save Copy destination"><button onclick="send('open')">Open</button><button onclick="send('undo')">Undo</button><button onclick="send('redo')">Redo</button><button onclick="send('reload')">Reload</button><button onclick="send('saveCopy')">Save Copy</button></nav>
+<nav><button onclick="toggle()">Edit / Preview</button><input id="query" placeholder="Search current document"><button onclick="send('search')">Search</button></nav><div id="status"></div><article id="preview"></article><textarea id="editor" hidden></textarea>
+<script>
+let state={path:'',revision:0},editing=false,pending=false,next=null;
+const byId=id=>document.getElementById(id);
+function send(action){if(pending)return;window.ipc.postMessage(JSON.stringify({action,path:byId('path').value,query:byId('query').value}));}
+function toggle(){editing=!editing;byId('editor').hidden=!editing;byId('preview').hidden=editing;if(editing)byId('editor').value=state.text||'';}
+function write(){if(pending||next===null)return;const text=next;next=null;pending=true;window.ipc.postMessage(JSON.stringify({action:'edit',path:state.path,revision:state.revision,text}));}
+byId('editor').oninput=()=>{next=byId('editor').value;write();};
+function receive(s){state=s;pending=false;byId('status').textContent=s.error||(s.matches.length?'Matching lines: '+s.matches.join(', '):s.path+(s.dirty?' — unsaved draft':' — saved'));byId('preview').innerHTML=s.html;if(next===null&&byId('editor').value!==s.text)byId('editor').value=s.text;if(!byId('path').value)byId('path').value=s.path;write();}
+send('state');
+</script></body></html>
