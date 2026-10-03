@@ -226,8 +226,9 @@ func scan(l *language, json bool, src []byte) []span {
 		if c >= '0' && c <= '9' || c == '.' && i+1 < n && src[i+1] >= '0' && src[i+1] <= '9' && (i == 0 || !isIdent(rune(src[i-1]))) {
 			if i == 0 || !isIdent(rune(src[i-1])) {
 				j := i
+				hex := has(i, "0x") || has(i, "0X") // decided once: a sign after "e" is part of a decimal exponent only
 				for j < n && (src[j] == '_' || src[j] == '.' && j+1 < n && src[j+1] != '.' || src[j] >= '0' && src[j] <= '9' || src[j] >= 'a' && src[j] <= 'z' || src[j] >= 'A' && src[j] <= 'Z' ||
-					(src[j] == '+' || src[j] == '-') && j > i && (src[j-1] == 'e' || src[j-1] == 'E') && !strings.HasPrefix(string(src[i:j]), "0x")) {
+					(src[j] == '+' || src[j] == '-') && j > i && (src[j-1] == 'e' || src[j-1] == 'E') && !hex) {
 					j++
 				}
 				add(i, j, tNumber)

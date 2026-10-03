@@ -845,6 +845,9 @@ static BOOL MarkdownName(NSString *name) {
 @implementation Reader
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
  self.pluginsEnabled=YES;
+ NSString *iconPath=[NSBundle.mainBundle pathForResource:@"AppIcon" ofType:@"icns"];
+ NSImage *icon=iconPath?[[NSImage alloc]initWithContentsOfFile:iconPath]:nil;
+ if(icon)NSApp.applicationIconImage=icon; // Dock, Cmd-Tab and the About panel
  self.window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,1080,780) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskResizable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
  self.window.minSize=NSMakeSize(640,450);
  // Chrome-less header: a transparent title bar in the page colour carries only the file name
