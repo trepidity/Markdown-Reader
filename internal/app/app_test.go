@@ -71,6 +71,10 @@ func TestExternalChangeBlocksSaveAndNavigation(t *testing.T) {
 	if s.Error == "" || s.Path != p || s.Text != "My unsaved draft" {
 		t.Fatalf("navigation lost draft: %+v", s)
 	}
+	s = a.Dispatch(Command{Action: "closeDocument"})
+	if s.Error == "" || s.Path != p || !s.Dirty {
+		t.Fatal("closing discarded unsaved draft")
+	}
 	copy := filepath.Join(filepath.Dir(p), "recovered.md")
 	s = a.Dispatch(Command{Action: "saveAs", Path: copy})
 	if s.Error != "" || disk(t, copy) != "My unsaved draft" || disk(t, p) != "External" {
@@ -118,5 +122,56 @@ func TestOversizeEditRemainsRecoverableAndBlocksNavigation(t *testing.T) {
 	s = a.Dispatch(Command{Action: "flush"})
 	if s.Error == "" || !s.Dirty {
 		t.Fatal("oversize draft did not block close")
+	}
+}
+
+func TestSidebarWidthPersistsAndRejectsInvalidSizes(t *testing.T) {
+	a, p := fixture(t)
+	a.Dispatch(Command{Action: "settings", Theme: "night", Style: "serif"})
+	s := a.Dispatch(Command{Action: "sidebarWidth", SidebarWidth: 384})
+	if s.Error != "" || s.SidebarWidth != 384 {
+		t.Fatalf("resize failed: %+v", s)
+	}
+	config := filepath.Join(filepath.Dir(p), "settings.json")
+	s = New(config).Dispatch(Command{Action: "state"})
+	if s.SidebarWidth != 384 || s.Theme != "night" {
+		t.Fatal("width or appearance was not preserved")
+	}
+	for _, width := range []int{-1, 0, 159, 601} {
+		s = a.Dispatch(Command{Action: "sidebarWidth", SidebarWidth: width})
+		if s.Error == "" || s.SidebarWidth != 384 {
+			t.Fatalf("invalid width %d changed preference", width)
+		}
+	}
+	if New(config).Dispatch(Command{Action: "state"}).SidebarWidth != 384 {
+		t.Fatal("invalid width persisted")
+	}
+}
+
+func TestExplicitFileOpenDoesNotInheritFolderSidebar(t *testing.T) {
+	a, p := fixture(t)
+	root := filepath.Dir(p)
+	s := a.Dispatch(Command{Action: "open", Path: p})
+	if s.Error != "" || s.Folder != "" || len(s.Files) != 0 {
+		t.Fatal("single-file launch showed sidebar")
+	}
+	a.Dispatch(Command{Action: "open", Path: root})
+	s = a.Dispatch(Command{Action: "open", Path: p})
+	if s.Error != "" || s.Folder != "" || len(s.Files) != 0 || s.Path != p {
+		t.Fatal("explicit file open inherited the folder sidebar")
+	}
+	a.Dispatch(Command{Action: "open", Path: root})
+	s = a.Dispatch(Command{Action: "navigate", Path: p})
+	if s.Error != "" || s.Folder != root || len(s.Files) != 1 || s.Path != p {
+		t.Fatal("choosing a folder file removed its sidebar")
+	}
+	s = a.Dispatch(Command{Action: "open", Path: filepath.Join(root, "missing.md")})
+	if s.Error == "" || s.Folder != root || s.Path != p {
+		t.Fatal("failed open changed the active view")
+	}
+	a.Dispatch(Command{Action: "closeFolder"})
+	s = a.Dispatch(Command{Action: "navigate", Path: p})
+	if s.Error != "" || s.Folder != "" || len(s.Files) != 0 {
+		t.Fatal("internal navigation invented a folder sidebar")
 	}
 }

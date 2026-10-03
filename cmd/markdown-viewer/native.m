@@ -9,6 +9,7 @@ extern char *goCommand(char *raw);
 @property NSString *page;
 @property NSMutableArray<NSString *> *pending;
 @property BOOL ready;
+@property NSTimer *refreshTimer;
 @property BOOL quitting;
 @end
 @implementation Viewer
@@ -29,8 +30,10 @@ extern char *goCommand(char *raw);
  NSAlert *alert=[NSAlert new];alert.messageText=message;[alert addButtonWithTitle:@"Discard and Reload"];[alert addButtonWithTitle:@"Cancel"];[alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse r){completion(r==NSAlertFirstButtonReturn);}];
 }
 - (void)webView:(WKWebView *)web didFinishNavigation:(WKNavigation *)nav {
- self.ready=YES;for(NSString *path in self.pending){[self send:@"open" value:path];}[self.pending removeAllObjects];
+ self.ready=YES;[self.refreshTimer invalidate];self.refreshTimer=[NSTimer scheduledTimerWithTimeInterval:0.75 target:self selector:@selector(refreshFiles:) userInfo:nil repeats:YES];for(NSString *path in self.pending){[self send:@"open" value:path];}[self.pending removeAllObjects];
 }
+- (void)refreshFiles:(id)sender {if(self.ready)[self send:@"refresh" value:nil];}
+- (void)applicationDidBecomeActive:(NSNotification *)note {[self refreshFiles:nil];}
 - (void)application:(NSApplication *)app openFiles:(NSArray<NSString *> *)paths {
  for(NSString *path in paths){if(self.ready){[self send:@"open" value:path];}else{[self.pending addObject:path];}}
  [self.window makeKeyAndOrderFront:nil];[app replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
@@ -50,6 +53,10 @@ extern char *goCommand(char *raw);
 - (void)undo:(id)sender {[self send:@"undo" value:nil];}
 - (void)redo:(id)sender {[self send:@"redo" value:nil];}
 - (void)recent:(id)sender {[self send:@"recent" value:nil];}
+- (void)find:(id)sender {[self send:@"find" value:nil];}
+- (void)findAll:(id)sender {[self send:@"findAll" value:nil];}
+- (void)findNext:(id)sender {[self send:@"findNext" value:nil];}
+- (void)findPrevious:(id)sender {[self send:@"findPrevious" value:nil];}
 - (void)save:(id)sender {[self send:@"flush" value:nil];}
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
  if(!message.frameInfo.isMainFrame||![message.body isKindOfClass:[NSDictionary class]])return;
@@ -84,6 +91,8 @@ void runApp(const char *html,const char *path){@autoreleasepool{
  NSMenuItem *edit=[NSMenuItem new];edit.title=@"Edit";[bar addItem:edit];NSMenu *em=[[NSMenu alloc]initWithTitle:@"Edit"];edit.submenu=em;
  item(em,@"Undo",@selector(undo:),@"z",v,cmd);item(em,@"Redo",@selector(redo:),@"z",v,cmd|NSEventModifierFlagShift);[em addItem:[NSMenuItem separatorItem]];
  item(em,@"Cut",@selector(cut:),@"x",nil,cmd);item(em,@"Copy",@selector(copy:),@"c",nil,cmd);item(em,@"Paste",@selector(paste:),@"v",nil,cmd);item(em,@"Select All",@selector(selectAll:),@"a",nil,cmd);
+ [em addItem:[NSMenuItem separatorItem]];
+ item(em,@"Find in Document…",@selector(find:),@"f",v,cmd);item(em,@"Find in Open Documents or Folder…",@selector(findAll:),@"f",v,cmd|NSEventModifierFlagShift);item(em,@"Find Next",@selector(findNext:),@"g",v,cmd);item(em,@"Find Previous",@selector(findPrevious:),@"g",v,cmd|NSEventModifierFlagShift);
  NSMenuItem *view=[NSMenuItem new];view.title=@"View";[bar addItem:view];NSMenu *vm=[[NSMenu alloc]initWithTitle:@"View"];view.submenu=vm;item(vm,@"Toggle Edit / Preview",@selector(toggle:),@"e",v,cmd);
  [NSApp run];
 }}

@@ -13,10 +13,13 @@ import (
 const MaxSize = 16 << 20
 
 type Document struct {
-	Path, Text string
-	saved      [32]byte
-	history    []string
-	index      int
+	Path, Text    string
+	Revision      uint64
+	info          os.FileInfo
+	staleConflict bool
+	saved         [32]byte
+	history       []string
+	index         int
 }
 
 func Open(path string) (*Document, error) {
@@ -39,15 +42,21 @@ func Open(path string) (*Document, error) {
 	if e != nil {
 		return nil, e
 	}
+	if len(b) > MaxSize {
+		return nil, errors.New("file exceeds 16 MiB")
+	}
 	if !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0 {
 		return nil, errors.New("file is not UTF-8 text")
 	}
-	return &Document{Path: p, Text: string(b), saved: sha256.Sum256(b), history: []string{string(b)}}, nil
+	return &Document{Path: p, Text: string(b), Revision: 1, info: info, saved: sha256.Sum256(b), history: []string{string(b)}}, nil
 }
 func (d *Document) Dirty() bool   { return sha256.Sum256([]byte(d.Text)) != d.saved }
 func (d *Document) CanUndo() bool { return d.index > 0 }
 func (d *Document) CanRedo() bool { return d.index+1 < len(d.history) }
-func (d *Document) Edit(text string) error {
+func (d *Document) Edit(text string, revision ...uint64) error {
+	if len(revision) > 0 && revision[0] != 0 && revision[0] != d.Revision {
+		d.staleConflict = true
+	}
 	if text != d.Text {
 		d.history = append(d.history[:d.index+1], text)
 		d.index++
@@ -84,7 +93,11 @@ func (d *Document) Save() error {
 		return errors.New("document exceeds 16 MiB; shorten the retained draft or use Save Copy")
 	}
 	if !d.Dirty() {
+		d.staleConflict = false
 		return nil
+	}
+	if d.staleConflict {
+		return errors.New("file reloaded while you were typing; your draft is retained. Use Save Copy or Reload")
 	}
 	b, e := os.ReadFile(d.Path)
 	if e != nil {
@@ -101,6 +114,8 @@ func (d *Document) Save() error {
 		return e
 	}
 	d.saved = sha256.Sum256([]byte(d.Text))
+	d.info, _ = os.Stat(d.Path)
+	d.staleConflict = false
 	return nil
 }
 func (d *Document) SaveAs(path string) error {
@@ -130,6 +145,8 @@ func (d *Document) SaveAs(path string) error {
 	}
 	d.Path = p
 	d.saved = sha256.Sum256([]byte(d.Text))
+	d.info, _ = os.Stat(d.Path)
+	d.staleConflict = false
 	return nil
 }
 func AtomicWrite(path string, data []byte, mode os.FileMode) error {
@@ -153,4 +170,35 @@ func AtomicWrite(path string, data []byte, mode os.FileMode) error {
 		return e
 	}
 	return os.Rename(name, path)
+}
+
+// Refresh replaces only clean content. Metadata avoids rereading unchanged files;
+// inode identity also catches atomic replacements with preserved timestamps.
+func (d *Document) Refresh() (bool, error) {
+	info, err := os.Stat(d.Path)
+	if err != nil {
+		return false, err
+	}
+	if d.info != nil && os.SameFile(info, d.info) && info.Size() == d.info.Size() && info.ModTime() == d.info.ModTime() && info.Mode() == d.info.Mode() {
+		return false, nil
+	}
+	next, err := Open(d.Path)
+	if err != nil {
+		return false, err
+	}
+	if next.saved == d.saved {
+		d.info = next.info
+		return false, nil
+	}
+	if d.Dirty() {
+		return false, errors.New("file changed outside the app; your draft is retained. Use Save Copy or Reload")
+	}
+	d.Text = next.Text
+	d.saved = next.saved
+	d.info = next.info
+	d.history = []string{d.Text}
+	d.index = 0
+	d.Revision++
+	d.staleConflict = false
+	return true, nil
 }
