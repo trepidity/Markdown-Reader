@@ -37,6 +37,8 @@ window.renderMermaid = async request => {
     // Any value that could fetch or run something: a URL that is not a same-document #fragment, or a script URL.
     const external = value => {
       if (/(?:^|[^a-z])(?:javascript|vbscript|data):/i.test(value) || /@import|expression\s*\(|-moz-binding|behavior\s*:/i.test(value)) return true;
+      // CSS functions that load a resource without url(): image-set("a.png"), src("a.png"), cross-fade(), element().
+      if (/(?:^|[^a-z-])(?:image-set|-webkit-image-set|src|cross-fade|-webkit-cross-fade|element)\s*\(/i.test(value)) return true;
       for (const match of value.matchAll(/url\(([^)]*)\)/gi)) {
         const target = match[1].trim().replace(/^['"]|['"]$/g, '');
         if (!/^#[a-zA-Z0-9_.:-]+$/.test(target)) return true;
@@ -52,6 +54,8 @@ window.renderMermaid = async request => {
       for (const attr of [...el.attributes]) {
         if (/^on/i.test(attr.name) || ['href', 'xlink:href', 'src', 'data', 'action', 'formaction'].includes(attr.name.toLowerCase())) {
           el.removeAttribute(attr.name);
+        } else if (attr.name.toLowerCase() === 'style' && /\\/.test(attr.value)) {
+          throw new Error('External diagram styles are disabled'); // CSS escapes can hide any of the above
         } else if (external(attr.value)) {
           // Presentation attributes (fill, filter, mask, clip-path, marker-*, style...) share the rule.
           throw new Error('External diagram resources are disabled');
