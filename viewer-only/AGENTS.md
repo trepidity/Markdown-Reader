@@ -9,3 +9,10 @@ exit status, and unchanged input files; the bundled app's Open action, displayed
 content, read-only text, scrolling, and reload failure behavior. Measure physical
 footprint in the native bundle, including any live renderer helper. Keep limitations
 and transient-versus-settled memory explicit. Root verification gates still apply.
+
+Reader plugins are user-authorized optional fenced-code renderers. Keep plugin
+discovery, limits, dispatch, and fallback in Go. Native presentation consumes
+SVG/PDF vector records without linking WebKit. Mermaid's WebKit renderer is a
+short-lived separate executable. The public plugin stdin/stdout protocol and
+actual bundled Mermaid output are additional test seams. Count parser, plugin,
+and WebKit XPC helper memory; do not attribute unrelated existing WebKit processes.

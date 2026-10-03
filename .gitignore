@@ -39,3 +39,5 @@ go.work.sum
 .DS_Store
 
 /rust-comparison/target/
+/viewer-only/plugins/mermaid/node_modules/
+/viewer-only/plugins/mermaid/build/

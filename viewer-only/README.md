@@ -1,5 +1,10 @@
 # Markdown Reader — viewer-only memory experiment
 
+The measurements below record the original viewer-only baseline at commit
+`d889153`, before plugins. The current build also includes the optional
+[Mermaid plugin system](plugins/README.md), with SVG export, native vector display,
+and separately recorded plugin memory measurements.
+
 Separate runnable macOS application focused on low resident RAM:
 [Markdown Reader.app](../dist/Markdown%20Reader.app).
 It does not replace the existing Markdown Viewer or change default file associations.

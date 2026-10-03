@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "mermaid",
+  "name": "Mermaid diagrams",
+  "version": "1.0.0",
+  "languages": ["mermaid"],
+  "executable": "render",
+  "timeoutMilliseconds": 10000
+}

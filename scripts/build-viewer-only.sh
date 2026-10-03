@@ -3,6 +3,7 @@ set -eu
 cd "$(dirname "$0")/.."
 bundle="dist/Markdown Reader.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+./scripts/build-reader-plugins.sh
 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$bundle/Contents/Resources/markdown-reader" ./cmd/markdown-reader
 clang -O2 -fobjc-arc -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=13.0 viewer-only/main.m -framework Cocoa -o "$bundle/Contents/MacOS/reader"
 python3 - "$bundle" <<'PY'

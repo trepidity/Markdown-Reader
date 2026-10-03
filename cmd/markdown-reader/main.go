@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
@@ -21,9 +22,18 @@ import (
 // records followed by UTF-8 text and link bytes. No source, AST, HTML, history,
 // or Go heap survives after this helper exits. Flags: bold=1 italic=2 mono=4
 // strike=8, heading level in bits 8..11, indentation in bits 16..23.
+// Vector flag 1<<30 instead carries PDF body bytes and UTF-8 SVG metadata.
 func run(args []string, out io.Writer) error {
+	pluginRoot := ""
+	if len(args) == 3 && args[0] == "--plugins" {
+		pluginRoot, args = args[1], args[2:]
+	}
 	if len(args) != 1 {
-		return fmt.Errorf("usage: markdown-reader FILE")
+		return fmt.Errorf("usage: markdown-reader [--plugins DIRECTORY] FILE")
+	}
+	plugins, err := loadPlugins(pluginRoot)
+	if err != nil {
+		return err
 	}
 	f, err := os.Open(args[0])
 	if err != nil {
@@ -97,7 +107,32 @@ func run(args []string, out io.Writer) error {
 			flags |= 8
 		case *ast.CodeSpan:
 			flags |= 4
-		case *ast.FencedCodeBlock, *ast.CodeBlock:
+		case *ast.FencedCodeBlock:
+			language := strings.ToLower(string(v.Language(source)))
+			if _, installed := plugins.languages[language]; installed {
+				var code bytes.Buffer
+				for i := 0; i < n.Lines().Len(); i++ {
+					line := n.Lines().At(i)
+					code.Write(line.Value(source))
+				}
+				result, id, renderError := plugins.render(language, code.Bytes())
+				if renderError == nil && result != nil {
+					emit(result.PDF, vectorRecord, []byte(result.SVG))
+					emit([]byte("\n"), flags, nil)
+					return
+				}
+				if renderError != nil {
+					emit([]byte(fmt.Sprintf("[Plugin %s: %s; source follows]\n", id, renderError)), flags, nil)
+				}
+			}
+			lines := n.Lines()
+			for i := 0; i < lines.Len(); i++ {
+				line := lines.At(i)
+				emit(line.Value(source), flags|4, nil)
+			}
+			emit([]byte("\n"), flags|4, nil)
+			return
+		case *ast.CodeBlock:
 			lines := n.Lines()
 			for i := 0; i < lines.Len(); i++ {
 				line := lines.At(i)

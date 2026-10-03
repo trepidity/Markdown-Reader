@@ -1,7 +1,25 @@
 #import <Cocoa/Cocoa.h>
 
-// No WebKit and no Go runtime in this process. The bundled, read-only parser
-// produces a compact stream and exits; only attributed presentation survives.
+// No WebKit or Go runtime in this process. Plugins run under the temporary
+// parser; only attributed presentation and optional SVG/PDF diagrams survive.
+static NSString *const ReaderSVGAttribute = @"ReaderDiagramSVG";
+
+@interface ReaderDiagramAttachment : NSTextAttachment
+@end
+@implementation ReaderDiagramAttachment
+- (CGRect)fittedBounds:(CGRect)line position:(CGPoint)position {
+ NSSize size=self.image.size;
+ CGFloat available=MAX(1,CGRectGetMaxX(line)-position.x);
+ CGFloat width=MIN(MIN(900,size.width),available);
+ return CGRectMake(0,0,width,size.height*width/MAX(1,size.width));
+}
+- (CGRect)attachmentBoundsForAttributes:(NSDictionary *)attributes location:(id<NSTextLocation>)location textContainer:(NSTextContainer *)container proposedLineFragment:(CGRect)line position:(CGPoint)position {
+ return [self fittedBounds:line position:position];
+}
+- (CGRect)attachmentBoundsForTextContainer:(NSTextContainer *)container proposedLineFragment:(CGRect)line glyphPosition:(CGPoint)position characterIndex:(NSUInteger)index {
+ return [self fittedBounds:line position:position];
+}
+@end
 static NSDictionary *Attributes(uint32_t flags, NSMutableDictionary *cache) {
  NSNumber *key=@(flags); if(cache[key])return cache[key];
  NSUInteger heading=(flags>>8)&15, indent=MIN(12,(flags>>16)&255);
@@ -26,6 +44,19 @@ static NSMutableAttributedString *Decode(NSData *data) {
   uint32_t fields[3];memcpy(fields,bytes+offset,12);offset+=12;
   uint32_t flags=CFSwapInt32LittleToHost(fields[0]),length=CFSwapInt32LittleToHost(fields[1]),linkLength=CFSwapInt32LittleToHost(fields[2]);
   if((uint64_t)length+linkLength>data.length-offset)return nil;
+  if(flags==(1U<<30)){
+   if(length>4*1024*1024||linkLength>2*1024*1024)return nil;
+   NSData *pdf=[NSData dataWithBytes:bytes+offset length:length];offset+=length;
+   NSString *svg=[[NSString alloc]initWithBytes:bytes+offset length:linkLength encoding:NSUTF8StringEncoding];offset+=linkLength;
+   NSPDFImageRep *representation=[NSPDFImageRep imageRepWithData:pdf];
+   if(!svg||!representation||representation.pageCount!=1||representation.size.width<=0||representation.size.height<=0||representation.size.width>4096||representation.size.height>4096)return nil;
+   NSImage *image=[[NSImage alloc]initWithSize:representation.size];[image addRepresentation:representation];
+   NSTextAttachment *attachment=[ReaderDiagramAttachment new];attachment.image=image;
+   CGFloat width=MIN(900,representation.size.width);attachment.bounds=NSMakeRect(0,0,width,representation.size.height*width/representation.size.width);
+   NSMutableAttributedString *diagram=[[NSAttributedString attributedStringWithAttachment:attachment] mutableCopy];
+   [diagram addAttribute:ReaderSVGAttribute value:svg range:NSMakeRange(0,diagram.length)];[result appendAttributedString:diagram];
+   continue;
+  }
   NSString *text=[[NSString alloc]initWithBytes:bytes+offset length:length encoding:NSUTF8StringEncoding];offset+=length;
   NSString *link=[[NSString alloc]initWithBytes:bytes+offset length:linkLength encoding:NSUTF8StringEncoding];offset+=linkLength;
   if(!text||!link)return nil;
@@ -38,7 +69,7 @@ static NSMutableAttributedString *Decode(NSData *data) {
  [result endEditing];return result;
 }
 
-@interface Reader : NSObject <NSApplicationDelegate,NSTextViewDelegate>
+@interface Reader : NSObject <NSApplicationDelegate,NSTextViewDelegate,NSMenuItemValidation>
 @property NSWindow *window;
 @property NSTextView *text;
 @property NSTextField *path;
@@ -46,9 +77,11 @@ static NSMutableAttributedString *Decode(NSData *data) {
 @property NSString *currentPath;
 @property BOOL loading;
 @property NSString *pendingPath;
+@property BOOL pluginsEnabled;
 @end
 @implementation Reader
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
+ self.pluginsEnabled=YES;
  self.window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,1080,780) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskResizable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
  self.window.title=@"Markdown Reader — Viewer Only";self.window.minSize=NSMakeSize(640,450);
  NSButton *open=[NSButton buttonWithTitle:@"Open…" target:self action:@selector(open:)];
@@ -71,10 +104,13 @@ static NSMutableAttributedString *Decode(NSData *data) {
  NSMenu *menu=[NSMenu new];NSMenuItem *app=[NSMenuItem new];[menu addItem:app];app.submenu=[NSMenu new];[app.submenu addItemWithTitle:@"Quit Markdown Reader" action:@selector(terminate:) keyEquivalent:@"q"];
  NSMenuItem *file=[NSMenuItem new];file.title=@"File";file.submenu=[NSMenu new];[menu addItem:file];
  for(NSArray *item in @[@[@"Open…",@"open:",@"o"],@[@"Reload",@"reload:",@"r"],@[@"Close document",@"clear:",@"w"]]){NSMenuItem *i=[file.submenu addItemWithTitle:item[0] action:NSSelectorFromString(item[1]) keyEquivalent:item[2]];i.target=self;}
+ NSMenuItem *export=[file.submenu addItemWithTitle:@"Export Diagram as SVG…" action:@selector(exportSVG:) keyEquivalent:@"S"];export.target=self;
  NSMenuItem *edit=[NSMenuItem new];edit.title=@"Edit";edit.submenu=[NSMenu new];[menu addItem:edit];
  [edit.submenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
  [edit.submenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
  NSMenuItem *find=[edit.submenu addItemWithTitle:@"Find…" action:@selector(performTextFinderAction:) keyEquivalent:@"f"];find.tag=NSTextFinderActionShowFindInterface;
+ NSMenuItem *plugins=[NSMenuItem new];plugins.title=@"Plugins";plugins.submenu=[NSMenu new];[menu addItem:plugins];
+ NSMenuItem *enabled=[plugins.submenu addItemWithTitle:@"Enable Plugins" action:@selector(togglePlugins:) keyEquivalent:@""];enabled.target=self;enabled.state=NSControlStateValueOn;
  NSApp.mainMenu=menu;
  [self.window center];[self.window makeKeyAndOrderFront:nil];[NSApp activateIgnoringOtherApps:YES];
  NSString *initial=self.pendingPath;self.pendingPath=nil;
@@ -88,8 +124,10 @@ static NSMutableAttributedString *Decode(NSData *data) {
  if(!absolute.isAbsolutePath)absolute=[NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:absolute];
  absolute=absolute.stringByStandardizingPath;
  NSString *helper=[NSBundle.mainBundle pathForResource:@"markdown-reader" ofType:nil];
+ NSString *registry=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Plugins"];
+ NSArray *arguments=self.pluginsEnabled?@[@"--plugins",registry,absolute]:@[absolute];
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{@autoreleasepool{
-  NSTask *task=[NSTask new];task.executableURL=[NSURL fileURLWithPath:helper];task.arguments=@[absolute];
+  NSTask *task=[NSTask new];task.executableURL=[NSURL fileURLWithPath:helper];task.arguments=arguments;
   NSPipe *output=[NSPipe pipe];task.standardOutput=output;
   // Errors are short and bounded; use a pipe separate from the binary protocol.
   NSPipe *errors=[NSPipe pipe];task.standardError=errors;NSError *error=nil;NSData *data=nil;NSString *message=nil;
@@ -113,6 +151,21 @@ static NSMutableAttributedString *Decode(NSData *data) {
 - (void)open:(id)sender {NSOpenPanel *p=[NSOpenPanel openPanel];p.canChooseDirectories=NO;[p beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse r){if(r==NSModalResponseOK)[self load:p.URL.path];}];}
 - (void)reload:(id)sender {if(self.currentPath)[self load:self.currentPath];}
 - (void)clear:(id)sender {if(self.loading)return;[self.text.textStorage setAttributedString:[[NSAttributedString alloc]initWithString:@""]];self.currentPath=nil;self.path.stringValue=@"";self.window.title=@"Markdown Reader — Viewer Only";self.status.stringValue=@"Ready · Viewer only · TextKit 2";}
+- (void)togglePlugins:(NSMenuItem *)sender {if(self.loading)return;self.pluginsEnabled=!self.pluginsEnabled;sender.state=self.pluginsEnabled?NSControlStateValueOn:NSControlStateValueOff;[self reload:nil];}
+- (NSString *)selectedSVG {
+ NSAttributedString *content=self.text.textStorage;NSRange range=self.text.selectedRange;
+ // With no selection, export the first diagram; a selection narrows the choice.
+ if(!range.length)range=NSMakeRange(0,content.length);
+ if(NSMaxRange(range)>content.length)return nil;
+ __block NSString *svg=nil;
+ [content enumerateAttribute:ReaderSVGAttribute inRange:range options:0 usingBlock:^(id value,NSRange r,BOOL *stop){if(value){svg=value;*stop=YES;}}];return svg;
+}
+- (BOOL)validateMenuItem:(NSMenuItem *)item {if(item.action==@selector(exportSVG:))return !self.loading&&[self selectedSVG]!=nil;if(item.action==@selector(togglePlugins:))return !self.loading;return YES;}
+- (void)exportSVG:(id)sender {
+ NSString *svg=[self selectedSVG];if(!svg)return;
+ NSSavePanel *panel=[NSSavePanel savePanel];panel.nameFieldStringValue=@"diagram.svg";panel.title=@"Export Diagram as SVG";
+ [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response){if(response==NSModalResponseOK){NSError *error=nil;if(![svg writeToURL:panel.URL atomically:YES encoding:NSUTF8StringEncoding error:&error])self.status.stringValue=error.localizedDescription;}}];
+}
 - (void)application:(NSApplication *)app openFiles:(NSArray<NSString *> *)files {if(files.count){if(self.window)[self load:files.lastObject];else self.pendingPath=files.lastObject;}[app replyToOpenOrPrint:NSApplicationDelegateReplySuccess];}
 - (BOOL)textView:(NSTextView *)view clickedOnLink:(id)link atIndex:(NSUInteger)index {
  NSString *href=[link description];NSURL *url=[NSURL URLWithString:href];NSString *scheme=url.scheme.lowercaseString;
