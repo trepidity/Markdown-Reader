@@ -32,23 +32,33 @@ window.renderMermaid = async request => {
       throw new Error('Invalid SVG returned by Mermaid');
     }
     // Vector output must remain inert even if exported to another SVG viewer.
+    const blocked = new Set(['script', 'foreignobject', 'iframe', 'image', 'use', 'a', 'object', 'embed', 'link', 'meta', 'base',
+      'audio', 'video', 'animate', 'animatemotion', 'animatetransform', 'set', 'feimage', 'handler', 'listener', 'canvas']);
+    // Any value that could fetch or run something: a URL that is not a same-document #fragment, or a script URL.
+    const external = value => {
+      if (/(?:^|[^a-z])(?:javascript|vbscript|data):/i.test(value) || /@import|expression\s*\(|-moz-binding|behavior\s*:/i.test(value)) return true;
+      for (const match of value.matchAll(/url\(([^)]*)\)/gi)) {
+        const target = match[1].trim().replace(/^['"]|['"]$/g, '');
+        if (!/^#[a-zA-Z0-9_.:-]+$/.test(target)) return true;
+      }
+      return false;
+    };
     for (const el of doc.querySelectorAll('*')) {
-      if (['script', 'foreignObject', 'iframe', 'image', 'use', 'a'].includes(el.localName)) {
+      if (blocked.has(el.localName.toLowerCase())) {
         if (el.localName === 'a') el.replaceWith(...el.childNodes);
         else el.remove();
         continue;
       }
       for (const attr of [...el.attributes]) {
-        if (/^on/i.test(attr.name) || ['href', 'xlink:href'].includes(attr.name)) {
+        if (/^on/i.test(attr.name) || ['href', 'xlink:href', 'src', 'data', 'action', 'formaction'].includes(attr.name.toLowerCase())) {
           el.removeAttribute(attr.name);
+        } else if (external(attr.value)) {
+          // Presentation attributes (fill, filter, mask, clip-path, marker-*, style...) share the rule.
+          throw new Error('External diagram resources are disabled');
         }
       }
-      const css = el.localName === 'style' ? el.textContent : (el.getAttribute('style') || '');
-      if (/@import|@font-face|\\/i.test(css)) throw new Error('External diagram styles are disabled');
-      for (const match of css.matchAll(/url\(([^)]*)\)/gi)) {
-        const target = match[1].trim().replace(/^['"]|['"]$/g, '');
-        if (!/^#[a-zA-Z0-9_.:-]+$/.test(target)) throw new Error('External diagram resources are disabled');
-      }
+      const css = el.localName === 'style' ? el.textContent : '';
+      if (/@font-face|\\/.test(css) || external(css)) throw new Error('External diagram styles are disabled');
     }
     const element = document.importNode(doc.documentElement, true);
     const viewBox = element.viewBox.baseVal;

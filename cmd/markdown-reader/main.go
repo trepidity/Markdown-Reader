@@ -38,6 +38,10 @@ const (
 	tableRecord uint32 = 1 << 15
 	listDepth   uint32 = 1 << 16 // bits 16..23: list nesting
 	quoteDepth  uint32 = 1 << 24 // bits 24..27: block quote nesting
+	// Depths are capped at what the reader draws. Bits 28..31 are stream control, so a counter that
+	// grew past its field would let a document forge placeholder, vector, late and body-end records.
+	maxQuoteDepth = 8
+	maxListDepth  = 12
 )
 
 // cellText appends a table cell's plain text: link labels, code span text and
@@ -226,10 +230,14 @@ func run(args []string, out io.Writer) error {
 		case *ast.Paragraph, *ast.TextBlock:
 			paragraph = true
 		case *ast.Blockquote:
-			flags += quoteDepth
+			if flags>>24&15 < maxQuoteDepth { // the reader draws no more; deeper counts would overflow into the stream-control bits
+				flags += quoteDepth
+			}
 		case *ast.List:
 			number := v.Start
-			flags += listDepth
+			if flags>>16&255 < maxListDepth {
+				flags += listDepth
+			}
 			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 				prefix := "•\t"
 				if v.IsOrdered() {

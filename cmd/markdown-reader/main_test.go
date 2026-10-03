@@ -329,3 +329,27 @@ func TestUnstructuredFrontMatterIsShownAsCode(t *testing.T) {
 		t.Fatalf("code %q rest %q", code.String(), rest.String())
 	}
 }
+
+// Stream control lives in the top flag bits, so no document may ever set them on ordinary text.
+// Deeply nested quotes and lists once carried their depth counters up into those bits, letting a
+// document forge placeholder, vector, late and body-end records. Fails if any record produced from
+// plain Markdown carries a control bit, or if nesting changes how many records there are.
+func TestNestingDepthCannotForgeStreamControlRecords(t *testing.T) {
+	const control = placeholderRecord | lateRecord | vectorRecord | bodyEndRecord
+	documents := map[string]string{
+		"quotes":      strings.Repeat(">", 300) + " deep\n",
+		"quote 16":    strings.Repeat(">", 16) + " deep\n",
+		"quote 128":   strings.Repeat("> ", 128) + "x\n",
+		"lists":       strings.Repeat("  ", 0) + strings.Repeat("- ", 300) + "item\n",
+		"mixed":       strings.Repeat("> - ", 100) + "x\n",
+		"table quote": strings.Repeat("> ", 40) + "| a |\n" + strings.Repeat("> ", 40) + "|---|\n" + strings.Repeat("> ", 40) + "| b |\n",
+		"code quote":  strings.Repeat("> ", 40) + "```go\n" + strings.Repeat("> ", 40) + "x := 1\n" + strings.Repeat("> ", 40) + "```\n",
+	}
+	for name, source := range documents {
+		for _, r := range renderRecords(t, source) {
+			if r.flags&control != 0 {
+				t.Errorf("%s: record %q carries stream-control bits %#x", name, r.body, r.flags&control)
+			}
+		}
+	}
+}
