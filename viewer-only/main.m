@@ -11,6 +11,8 @@ static NSString *const ReaderSVGAttribute = @"ReaderDiagramSVG";
 // Per-paragraph decoration for the custom TextKit 2 layout fragment. Value is
 // a ReaderBlock bit set; it lives in the cached attribute dictionaries only.
 static NSString *const ReaderBlockAttribute = @"ReaderBlock";
+// Marks inline code runs; ReaderBlockFragment draws a rounded pill behind them.
+static NSString *const ReaderInlineCodeAttribute = @"ReaderInlineCode";
 // Marks a "Rendering diagram…" line awaiting its vector; value is style flags | diagram index.
 static NSString *const ReaderPlaceholderAttribute = @"ReaderPlaceholder";
 
@@ -261,12 +263,27 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
 }
 @end
 
+// Underlines the document name under a ⌘-hovered pointer. It is a separate transparent view, so
+// showing and hiding it never touches the text or its layout.
+@interface ReaderLinkOverlay : NSView
+@property(copy) NSArray<NSValue *> *segments; // in this view's coordinates
+@end
+@implementation ReaderLinkOverlay
+- (BOOL)isFlipped {return YES;}
+- (NSView *)hitTest:(NSPoint)point {return nil;}
+- (void)drawRect:(NSRect)dirty {
+ [NSColor.linkColor setFill];
+ for(NSValue *v in self.segments){NSRect r=v.rectValue;NSRectFill(NSMakeRect(r.origin.x,NSMaxY(r)-2,r.size.width,1.2));}
+}
+@end
+
 // The page: a text view that also handles the Expand / Fit to window button above a table.
-@interface ReaderPageView : NSTextView {NSRange _hoverRange;NSString *_hoverPath;id _monitor;NSAttributedString *_hoverSaved;__weak NSTextStorage *_hoverStorage;}
+@interface ReaderPageView : NSTextView {NSRange _hoverRange;NSString *_hoverPath;id _monitor;NSArray<NSValue *> *_hoverRects;ReaderLinkOverlay *_overlay;}
 @property(copy) void (^onToggle)(ReaderTable *table);
 @property(copy) NSString *(^resolveReference)(NSString *token); // document path for a mentioned file, or nil
 @property(copy) void (^openReference)(NSString *path);
 - (void)clearReference;
+- (void)enforceReferenceCursor;
 @end
 @implementation ReaderPageView
 - (ReaderTable *)toggleAtPoint:(NSPoint)point {
@@ -302,37 +319,42 @@ static BOOL ReferenceCharacter(unichar c) {return isalnum(c)||c=='_'||c=='.'||c=
  id<NSTextLocation> end=start?[content locationFromLocation:start withOffset:(NSInteger)range.length]:nil;
  return start&&end?[[NSTextRange alloc]initWithLocation:start endLocation:end]:nil;
 }
-// The underline is real text-storage styling, restored from a saved copy when the hover ends: TextKit
-// redraws a changed paragraph reliably, which a rendering attribute on cached fragments is not.
 - (void)clearReference {
- if(_hoverRange.location==NSNotFound)return;
- NSTextStorage *storage=self.textStorage;
- if(storage==_hoverStorage&&NSMaxRange(_hoverRange)<=storage.length&&_hoverSaved){
-  [storage beginEditing];[storage replaceCharactersInRange:_hoverRange withAttributedString:_hoverSaved];[storage endEditing];
- }
- _hoverRange=NSMakeRange(NSNotFound,0);_hoverPath=nil;_hoverSaved=nil;_hoverStorage=nil;
+ if(_hoverRange.location==NSNotFound&&!_hoverRects)return;
+ BOOL hand=NSCursor.currentCursor==NSCursor.pointingHandCursor;
+ _hoverRange=NSMakeRange(NSNotFound,0);_hoverPath=nil;_hoverRects=nil;_overlay.hidden=YES;
+ if(hand)[NSCursor.IBeamCursor set]; // the text view only changes it when the pointer crosses one of its own rects
+}
+// The text view sets its I-beam while the event is being dispatched, so the hand is set after, once.
+- (void)enforceReferenceCursor {
+ if(_hoverRects.count&&NSCursor.currentCursor!=NSCursor.pointingHandCursor)[NSCursor.pointingHandCursor set];
 }
 // With ⌘ held, underline the document name under the pointer if it names a file that exists.
 - (void)updateReferenceWithFlags:(NSEventModifierFlags)flags {
  if(!(flags&NSEventModifierFlagCommand)||!self.resolveReference){[self clearReference];return;}
  NSPoint local=[self convertPoint:[self.window mouseLocationOutsideOfEventStream] fromView:nil];
+ // Stay on the current name while the pointer is still near it: no toggling at its edges.
+ for(NSValue *v in _hoverRects)if(NSPointInRect(local,NSInsetRect(v.rectValue,-3,-3)))return;
  NSRange range=[self referenceRangeAtIndex:[self characterIndexForInsertionAtPoint:local]];
+ NSMutableArray<NSValue *> *rects=[NSMutableArray new];
  if(range.location!=NSNotFound){
   // The pointer must be over the text itself, not in the blank space beside the line.
   __block BOOL over=NO;NSTextRange *textRange=[self textRangeForRange:range];NSPoint origin=self.textContainerOrigin;
   if(textRange)[self.textLayoutManager enumerateTextSegmentsInRange:textRange type:NSTextLayoutManagerSegmentTypeStandard options:0 usingBlock:^BOOL(NSTextRange *r,CGRect frame,CGFloat baseline,NSTextContainer *c){
-   if(CGRectContainsPoint(CGRectInset(frame,-1,-2),CGPointMake(local.x-origin.x,local.y-origin.y)))over=YES;return !over;}];
+   CGRect inView=CGRectOffset(frame,origin.x,origin.y);[rects addObject:[NSValue valueWithRect:inView]];
+   if(CGRectContainsPoint(CGRectInset(inView,-1,-2),local))over=YES;
+   return YES;}];
   if(!over)range=NSMakeRange(NSNotFound,0);
  }
  if(range.location==NSNotFound){[self clearReference];return;}
- if(NSEqualRanges(range,_hoverRange)){[NSCursor.pointingHandCursor set];return;}
- [self clearReference];
  NSString *path=self.resolveReference([self.textStorage.string substringWithRange:range]);
-  if(!path)return;
- NSTextStorage *storage=self.textStorage;
- _hoverSaved=[storage attributedSubstringFromRange:range];_hoverStorage=storage;
- [storage beginEditing];[storage addAttributes:@{NSUnderlineStyleAttributeName:@(NSUnderlineStyleSingle),NSForegroundColorAttributeName:NSColor.linkColor} range:range];[storage endEditing];
- _hoverRange=range;_hoverPath=path;[NSCursor.pointingHandCursor set];
+ if(!path){[self clearReference];return;}
+ _hoverRange=range;_hoverPath=path;_hoverRects=rects;
+ NSRect all=NSZeroRect;for(NSValue *v in rects)all=NSEqualRects(all,NSZeroRect)?v.rectValue:NSUnionRect(all,v.rectValue);
+ if(!_overlay){_overlay=[ReaderLinkOverlay new];[self addSubview:_overlay];}
+ NSMutableArray<NSValue *> *local2=[NSMutableArray new];
+ for(NSValue *v in rects){NSRect r=v.rectValue;[local2 addObject:[NSValue valueWithRect:NSOffsetRect(r,-all.origin.x,-all.origin.y)]];}
+ _overlay.frame=all;_overlay.segments=local2;_overlay.hidden=NO;[_overlay setNeedsDisplay:YES];
 }
 - (void)viewDidMoveToWindow {
  [super viewDidMoveToWindow];_hoverRange=NSMakeRange(NSNotFound,0);
@@ -341,7 +363,11 @@ static BOOL ReferenceCharacter(unichar c) {return isalnum(c)||c=='_'||c=='.'||c=
  // ⌘ going down or up, and the pointer moving, both change what is underlined.
  __weak ReaderPageView *weak=self;
  _monitor=[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMouseMoved|NSEventMaskFlagsChanged|NSEventMaskLeftMouseDragged handler:^NSEvent *(NSEvent *event){
-  ReaderPageView *page=weak;if(page&&event.window==page.window)[page updateReferenceWithFlags:event.modifierFlags];
+  ReaderPageView *page=weak;
+  if(page&&event.window==page.window){
+   [page updateReferenceWithFlags:event.modifierFlags];
+   dispatch_async(dispatch_get_main_queue(),^{[weak enforceReferenceCursor];});
+  }
   return event;
  }];
 }
@@ -398,7 +424,7 @@ static CGPathRef BandPath(CGRect r,BOOL roundTop,BOOL roundBottom,CGFloat radius
    if((block&BlockCodeFirst)&&lines.count)top=CGRectGetMinY(lines.firstObject.typographicBounds)-CodeBandPad;
    if((block&BlockCodeLast)&&lines.count)bottom=CGRectGetMaxY(lines.lastObject.typographicBounds)+CodeBandPad;
    CGRect band=CGRectMake(x,point.y+top,MAX(0,width-2*pad-(x-left)),bottom-top);
-   NSColor *fill=[NSColor.textBackgroundColor blendedColorWithFraction:0.055 ofColor:NSColor.labelColor]?:NSColor.controlBackgroundColor;
+   NSColor *fill=[NSColor.textBackgroundColor blendedColorWithFraction:0.075 ofColor:NSColor.labelColor]?:NSColor.controlBackgroundColor;
    CGPathRef path=BandPath(band,block&BlockCodeFirst,block&BlockCodeLast,7);
    CGContextSetFillColorWithColor(context,fill.CGColor);CGContextAddPath(context,path);CGContextFillPath(context);CGPathRelease(path);
   }
@@ -412,6 +438,25 @@ static CGPathRef BandPath(CGRect r,BOOL roundTop,BOOL roundBottom,CGFloat radius
    CGRect line=lines.firstObject.typographicBounds;CGFloat y=round(point.y+CGRectGetMidY(line));
    CGContextSetFillColorWithColor(context,NSColor.separatorColor.CGColor);
    CGContextFillRect(context,CGRectMake(left+quotes*QuoteStep,y,MAX(0,width-2*pad-quotes*QuoteStep),1));
+  }
+  // Inline code: a rounded pill behind each run, GitHub's grey at 40% (dark) or 20% (light).
+  NSAttributedString *paragraph=[self.textElement isKindOfClass:NSTextParagraph.class]?((NSTextParagraph *)self.textElement).attributedString:nil;
+  if(paragraph.length){
+   BOOL dark=[[NSAppearance.currentDrawingAppearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua,NSAppearanceNameDarkAqua]] isEqualToString:NSAppearanceNameDarkAqua];
+   NSColor *pill=dark?[NSColor colorWithSRGBRed:110/255.0 green:118/255.0 blue:129/255.0 alpha:0.40]:[NSColor colorWithSRGBRed:175/255.0 green:184/255.0 blue:193/255.0 alpha:0.20];
+   CGContextSetFillColorWithColor(context,pill.CGColor);
+   [paragraph enumerateAttribute:ReaderInlineCodeAttribute inRange:NSMakeRange(0,paragraph.length) options:0 usingBlock:^(id value,NSRange run,BOOL *stop){
+    if(!value)return;
+    for(NSTextLineFragment *line in lines){
+     NSRange lineRange=line.characterRange,hit=NSIntersectionRange(run,lineRange);
+     if(!hit.length)continue;
+     CGRect bounds=line.typographicBounds;
+     CGFloat x1=[line locationForCharacterAtIndex:(NSInteger)hit.location].x;
+     CGFloat x2=NSMaxRange(hit)>=NSMaxRange(lineRange)?CGRectGetWidth(bounds):[line locationForCharacterAtIndex:(NSInteger)NSMaxRange(hit)].x;
+     CGRect rect=CGRectMake(point.x+CGRectGetMinX(bounds)+x1-3,point.y+CGRectGetMinY(bounds)+2,x2-x1+6,CGRectGetHeight(bounds)-5);
+     CGPathRef path=CGPathCreateWithRoundedRect(rect,5,5,NULL);CGContextAddPath(context,path);CGContextFillPath(context);CGPathRelease(path);
+    }
+   }];
   }
   CGContextRestoreGState(context);
  };
@@ -510,7 +555,7 @@ static NSDictionary *MakeAttributes(uint32_t flags) {
  }
  NSColor *color=(heading==6||quote||(flags&FlagStrike))?NSColor.secondaryLabelColor:NSColor.labelColor;
  NSMutableDictionary *a=[NSMutableDictionary dictionaryWithObjectsAndKeys:font,NSFontAttributeName,[p copy],NSParagraphStyleAttributeName,color,NSForegroundColorAttributeName,nil];
- if(mono&&!code&&!table)a[NSBackgroundColorAttributeName]=[NSColor.labelColor colorWithAlphaComponent:0.08];
+ if(mono&&!code&&!table)a[ReaderInlineCodeAttribute]=@YES;
  if(flags&FlagStrike)a[NSStrikethroughStyleAttributeName]=@(NSUnderlineStyleSingle);
  if(block&255||quote)a[ReaderBlockAttribute]=@(block);
  return [a copy];
@@ -566,7 +611,11 @@ static BOOL ReadFull(int fd,void *into,size_t length,size_t *got) {
  NSUInteger at=_storage.length;
  [_storage replaceCharactersInRange:NSMakeRange(at,0) withString:text];
  NSRange range=NSMakeRange(at,_storage.length-at);
- [_storage setAttributes:[self attributes:flags] range:range];
+ NSDictionary *attributes=[self attributes:flags];[_storage setAttributes:attributes range:range];
+ if(attributes[ReaderInlineCodeAttribute]){ // room for the pill that is drawn behind the run
+  [_storage addAttribute:NSKernAttributeName value:@5 range:NSMakeRange(NSMaxRange(range)-1,1)];
+  if(at>0)[_storage addAttribute:NSKernAttributeName value:@5 range:NSMakeRange(at-1,1)];
+ }
  if(link)[_storage addAttribute:NSLinkAttributeName value:link range:range];
  return YES;
 }
@@ -897,7 +946,9 @@ static BOOL MarkdownName(NSString *name) {
   ReaderTableRowStyle *row=s.length?[s attribute:ReaderTableRowAttribute atIndex:0 effectiveRange:NULL]:nil;
   if(row){ReaderTableRowFragment *f=[[ReaderTableRowFragment alloc]initWithTextElement:element range:element.elementRange];f.row=row;f.block=[[s attribute:ReaderBlockAttribute atIndex:0 effectiveRange:NULL] unsignedIntValue];return f;}
   NSNumber *block=s.length?[s attribute:ReaderBlockAttribute atIndex:0 effectiveRange:NULL]:nil;
-  if(block){ReaderBlockFragment *f=[[ReaderBlockFragment alloc]initWithTextElement:element range:element.elementRange];f.block=block.unsignedIntValue;return f;}
+  __block BOOL inlineCode=NO;
+  if(!block)[s enumerateAttribute:ReaderInlineCodeAttribute inRange:NSMakeRange(0,s.length) options:0 usingBlock:^(id v,NSRange r,BOOL *stop){if(v){inlineCode=YES;*stop=YES;}}];
+  if(block||inlineCode){ReaderBlockFragment *f=[[ReaderBlockFragment alloc]initWithTextElement:element range:element.elementRange];f.block=block.unsignedIntValue;return f;}
  }
  return [[NSTextLayoutFragment alloc]initWithTextElement:element range:element.elementRange];
 }
