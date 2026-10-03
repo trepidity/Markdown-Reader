@@ -263,3 +263,69 @@ func TestChunkedRenderingIsByteIdenticalToWholeDocument(t *testing.T) {
 		}
 	}
 }
+
+// Front matter is metadata, not prose: it must come out as one properties table (key, value) and
+// vanish from the Markdown that follows. Fails if the YAML leaks into the body as a paragraph,
+// if block scalars, lists or lists of maps lose their text, or if the body is lost.
+func TestFrontMatterBecomesAPropertiesTable(t *testing.T) {
+	source := "---\ntitle: \"Product Brief\"\nstatus: draft\ntags:\n  - alpha\n  - beta\nsummary: >-\n  Thesis and\n  customers.\nchangelog:\n  - version: 2\n    date: 2026-08-21\n  - version: 1\n    date: 2026-08-16\n---\n# Body\n"
+	var table []byte
+	var visible strings.Builder
+	for _, r := range renderRecords(t, source) {
+		if r.flags&tableRecord != 0 {
+			table = r.body
+		} else {
+			visible.Write(r.body)
+		}
+	}
+	var got struct {
+		Properties bool       `json:"properties"`
+		Rows       [][]string `json:"rows"`
+	}
+	if err := json.Unmarshal(table, &got); err != nil || !got.Properties {
+		t.Fatalf("no properties table: %v %s", err, table)
+	}
+	want := [][]string{
+		{"title", "Product Brief"}, {"status", "draft"}, {"tags", "alpha\nbeta"},
+		{"summary", "Thesis and customers."}, {"changelog", "version: 2 · date: 2026-08-21\nversion: 1 · date: 2026-08-16"},
+	}
+	if !reflect.DeepEqual(got.Rows, want) {
+		t.Fatalf("rows %q, want %q", got.Rows, want)
+	}
+	if strings.Contains(visible.String(), "title:") || strings.Contains(visible.String(), "---") || !strings.Contains(visible.String(), "Body") {
+		t.Fatalf("body is %q", visible.String())
+	}
+}
+
+// A leading thematic break is not front matter: the first line inside must be a key. Fails if
+// ordinary Markdown between two rules is swallowed as metadata.
+func TestLeadingRuleWithoutKeysIsNotFrontMatter(t *testing.T) {
+	for _, r := range renderRecords(t, "---\n\n# Heading\n\n---\ntext\n") {
+		if r.flags&tableRecord != 0 {
+			t.Fatal("document body was treated as front matter")
+		}
+	}
+	var visible strings.Builder
+	for _, r := range renderRecords(t, "---\n\n# Heading\n\n---\ntext\n") {
+		visible.Write(r.body)
+	}
+	if !strings.Contains(visible.String(), "Heading") || !strings.Contains(visible.String(), "text") {
+		t.Fatalf("lost content: %q", visible.String())
+	}
+}
+
+// Front matter this reader cannot structure is shown verbatim, never dropped.
+func TestUnstructuredFrontMatterIsShownAsCode(t *testing.T) {
+	records := renderRecords(t, "+++\ntitle = \"x\"\n+++\nBody\n")
+	var code, rest strings.Builder
+	for _, r := range records {
+		if r.flags&codeBlockLine != 0 {
+			code.Write(r.body)
+		} else {
+			rest.Write(r.body)
+		}
+	}
+	if !strings.Contains(code.String(), `title = "x"`) || !strings.Contains(rest.String(), "Body") {
+		t.Fatalf("code %q rest %q", code.String(), rest.String())
+	}
+}

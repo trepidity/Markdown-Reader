@@ -82,6 +82,7 @@ static const CGFloat TablePadX=10,TablePadY=6,TableMinColumn=36,TableWordCap=220
 @property(copy) NSDictionary *base;               // text attributes of the surrounding block (list/quote indent)
 @property CGFloat indent;                         // list/quote indent the table sits at
 @property BOOL expanded;                          // wants the full window width
+@property BOOL properties;                        // front matter: key / value, no header row
 @property(copy) NSString *layoutKey;              // what the current text was laid out for
 @property BOOL fullWidth;                         // laid out expanded: its lines use the whole container
 @end
@@ -164,7 +165,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   [natural addObject:@(nat)];[minimum addObject:@(MIN(nat,MAX(TableMinColumn,MIN(word+2*TablePadX,TableWordCap))))];
  }
  CGFloat total=0,minTotal=0;for(NSUInteger c=0;c<count;c++){total+=natural[c].doubleValue;minTotal+=minimum[c].doubleValue;}
- BOOL expandable=total>fit+1,expanded=table.expanded&&expandable;
+ BOOL expandable=total>fit+1&&!table.properties,expanded=table.expanded&&expandable;
  CGFloat target=expanded?MIN(total,full):fit;
  // Natural widths if they fit. Otherwise cap the long columns and leave short ones whole: find the
  // widest cap such that every column min(natural, cap), no narrower than its longest word, still
@@ -205,7 +206,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
  }
  CGFloat shift=expanded?0:offset;
  for(NSUInteger r=0;r<table.cells.count;r++){
-  NSArray *row=table.cells[r];BOOL header=r==0;
+  NSArray *row=table.cells[r];BOOL header=r==0&&!table.properties;
   NSMutableArray<NSArray<NSString *> *> *cellLines=[NSMutableArray new];NSUInteger depth=1;
   for(NSUInteger c=0;c<count;c++){
    NSTextAlignment al=c<table.alignment.count?(NSTextAlignment)table.alignment[c].integerValue:NSTextAlignmentLeft;
@@ -223,6 +224,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
     else [stops addObject:[[NSTextTab alloc]initWithTextAlignment:NSTextAlignmentLeft location:left+TablePadX options:@{}]];
    }
    [line appendString:@"\n"];
+   NSArray<NSString *> *pieces=[line componentsSeparatedByString:@"\t"]; // "" then one piece per column
    NSMutableParagraphStyle *p=[NSMutableParagraphStyle new];p.firstLineHeadIndent=p.headIndent=indent;p.tabStops=stops;p.defaultTabInterval=0;
    p.lineBreakMode=NSLineBreakByClipping;p.lineSpacing=2;
    p.paragraphSpacingBefore=j==0?TablePadY:0;p.paragraphSpacing=j+1==depth?TablePadY:0;
@@ -230,7 +232,13 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
    style.firstLine=j==0;style.lastLine=j+1==depth;style.firstRow=r==0;style.lastRow=r+1==table.cells.count;
    NSMutableDictionary *a=[block mutableCopy];a[NSParagraphStyleAttributeName]=p;a[ReaderTableRowAttribute]=style;
    a[NSFontAttributeName]=TableCellAttributes(header,NSTextAlignmentLeft)[NSFontAttributeName];a[NSForegroundColorAttributeName]=NSColor.labelColor;
-   append(line,a);
+   if(table.properties){ // front matter: the key column is a quieter semibold label
+    for(NSUInteger c=0;c<count;c++){
+     NSMutableDictionary *k=[a mutableCopy];
+     if(c==0){k[NSFontAttributeName]=[NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];k[NSForegroundColorAttributeName]=NSColor.secondaryLabelColor;}
+     append([NSString stringWithFormat:@"\t%@%@",pieces[c+1],c+1==count?@"":@""],k);
+    }
+   }else append(line,a);
   }
  }
  table.layoutKey=TableKey(table,pane);
@@ -254,8 +262,11 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
 @end
 
 // The page: a text view that also handles the Expand / Fit to window button above a table.
-@interface ReaderPageView : NSTextView
+@interface ReaderPageView : NSTextView {NSRange _hoverRange;NSString *_hoverPath;id _monitor;NSAttributedString *_hoverSaved;__weak NSTextStorage *_hoverStorage;}
 @property(copy) void (^onToggle)(ReaderTable *table);
+@property(copy) NSString *(^resolveReference)(NSString *token); // document path for a mentioned file, or nil
+@property(copy) void (^openReference)(NSString *path);
+- (void)clearReference;
 @end
 @implementation ReaderPageView
 - (ReaderTable *)toggleAtPoint:(NSPoint)point {
@@ -269,7 +280,77 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
  CGRect pill=CGRectOffset(line.typographicBounds,fragment.layoutFragmentFrame.origin.x,fragment.layoutFragmentFrame.origin.y);
  return CGRectContainsPoint(CGRectInset(pill,-4,-4),local)?table:nil;
 }
+#pragma mark ⌘-hover / ⌘-click on mentioned documents
+static BOOL ReferenceCharacter(unichar c) {return isalnum(c)||c=='_'||c=='.'||c=='/'||c=='-'||c=='~'||c=='+'||c=='@';}
+// The document path written at a character index, e.g. spec/07-care-model-boundary.md.
+- (NSRange)referenceRangeAtIndex:(NSUInteger)index {
+ NSString *text=self.textStorage.string;NSUInteger length=text.length;
+ if(!length)return NSMakeRange(NSNotFound,0);
+ if(index>=length)index=length-1;
+ if(!ReferenceCharacter([text characterAtIndex:index])){if(index==0||!ReferenceCharacter([text characterAtIndex:index-1]))return NSMakeRange(NSNotFound,0);index--;}
+ NSUInteger start=index,end=index+1;
+ while(start>0&&ReferenceCharacter([text characterAtIndex:start-1]))start--;
+ while(end<length&&ReferenceCharacter([text characterAtIndex:end]))end++;
+ while(end>start&&[text characterAtIndex:end-1]=='.')end--; // sentence punctuation is not part of the name
+ NSString *token=[text substringWithRange:NSMakeRange(start,end-start)].lowercaseString;
+ for(NSString *ext in @[@".md",@".markdown",@".mdown",@".mkd"])if([token hasSuffix:ext]&&token.length>ext.length)return NSMakeRange(start,end-start);
+ return NSMakeRange(NSNotFound,0);
+}
+- (NSTextRange *)textRangeForRange:(NSRange)range {
+ NSTextContentManager *content=self.textLayoutManager.textContentManager;
+ id<NSTextLocation> start=[content locationFromLocation:content.documentRange.location withOffset:(NSInteger)range.location];
+ id<NSTextLocation> end=start?[content locationFromLocation:start withOffset:(NSInteger)range.length]:nil;
+ return start&&end?[[NSTextRange alloc]initWithLocation:start endLocation:end]:nil;
+}
+// The underline is real text-storage styling, restored from a saved copy when the hover ends: TextKit
+// redraws a changed paragraph reliably, which a rendering attribute on cached fragments is not.
+- (void)clearReference {
+ if(_hoverRange.location==NSNotFound)return;
+ NSTextStorage *storage=self.textStorage;
+ if(storage==_hoverStorage&&NSMaxRange(_hoverRange)<=storage.length&&_hoverSaved){
+  [storage beginEditing];[storage replaceCharactersInRange:_hoverRange withAttributedString:_hoverSaved];[storage endEditing];
+ }
+ _hoverRange=NSMakeRange(NSNotFound,0);_hoverPath=nil;_hoverSaved=nil;_hoverStorage=nil;
+}
+// With ⌘ held, underline the document name under the pointer if it names a file that exists.
+- (void)updateReferenceWithFlags:(NSEventModifierFlags)flags {
+ if(!(flags&NSEventModifierFlagCommand)||!self.resolveReference){[self clearReference];return;}
+ NSPoint local=[self convertPoint:[self.window mouseLocationOutsideOfEventStream] fromView:nil];
+ NSRange range=[self referenceRangeAtIndex:[self characterIndexForInsertionAtPoint:local]];
+ if(range.location!=NSNotFound){
+  // The pointer must be over the text itself, not in the blank space beside the line.
+  __block BOOL over=NO;NSTextRange *textRange=[self textRangeForRange:range];NSPoint origin=self.textContainerOrigin;
+  if(textRange)[self.textLayoutManager enumerateTextSegmentsInRange:textRange type:NSTextLayoutManagerSegmentTypeStandard options:0 usingBlock:^BOOL(NSTextRange *r,CGRect frame,CGFloat baseline,NSTextContainer *c){
+   if(CGRectContainsPoint(CGRectInset(frame,-1,-2),CGPointMake(local.x-origin.x,local.y-origin.y)))over=YES;return !over;}];
+  if(!over)range=NSMakeRange(NSNotFound,0);
+ }
+ if(range.location==NSNotFound){[self clearReference];return;}
+ if(NSEqualRanges(range,_hoverRange)){[NSCursor.pointingHandCursor set];return;}
+ [self clearReference];
+ NSString *path=self.resolveReference([self.textStorage.string substringWithRange:range]);
+  if(!path)return;
+ NSTextStorage *storage=self.textStorage;
+ _hoverSaved=[storage attributedSubstringFromRange:range];_hoverStorage=storage;
+ [storage beginEditing];[storage addAttributes:@{NSUnderlineStyleAttributeName:@(NSUnderlineStyleSingle),NSForegroundColorAttributeName:NSColor.linkColor} range:range];[storage endEditing];
+ _hoverRange=range;_hoverPath=path;[NSCursor.pointingHandCursor set];
+}
+- (void)viewDidMoveToWindow {
+ [super viewDidMoveToWindow];_hoverRange=NSMakeRange(NSNotFound,0);
+ if(!self.window||_monitor)return;
+ self.window.acceptsMouseMovedEvents=YES;
+ // ⌘ going down or up, and the pointer moving, both change what is underlined.
+ __weak ReaderPageView *weak=self;
+ _monitor=[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMouseMoved|NSEventMaskFlagsChanged|NSEventMaskLeftMouseDragged handler:^NSEvent *(NSEvent *event){
+  ReaderPageView *page=weak;if(page&&event.window==page.window)[page updateReferenceWithFlags:event.modifierFlags];
+  return event;
+ }];
+}
+- (void)mouseExited:(NSEvent *)event {[super mouseExited:event];[self clearReference];}
 - (void)mouseDown:(NSEvent *)event {
+ if((event.modifierFlags&NSEventModifierFlagCommand)&&self.openReference){
+  [self updateReferenceWithFlags:event.modifierFlags];
+  if(_hoverPath){NSString *path=_hoverPath;[self clearReference];self.openReference(path);return;}
+ }
  ReaderTable *table=[self toggleAtPoint:[self convertPoint:event.locationInWindow fromView:nil]];
  if(table&&self.onToggle){self.onToggle(table);return;}
  [super mouseDown:event];
@@ -520,6 +601,7 @@ static BOOL AllowedLink(const uint8_t *s,uint32_t n) {
  for(id a in align)[alignment addObject:@([a isEqual:@"r"]?NSTextAlignmentRight:[a isEqual:@"c"]?NSTextAlignmentCenter:NSTextAlignmentLeft)];
  NSDictionary *base=[self attributes:flags];
  ReaderTable *table=[ReaderTable new];table.cells=rows;table.alignment=alignment;table.base=base;
+ table.properties=[json[@"properties"] boolValue];
  table.indent=((NSParagraphStyle *)base[NSParagraphStyleAttributeName]).headIndent;++_tables;
  NSMutableDictionary *a=[base mutableCopy];a[ReaderTableAttribute]=table;
  [_storage appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:a]];
@@ -679,6 +761,7 @@ static BOOL MarkdownName(NSString *name) {
 @property CGFloat restoredY;
 @property NSTimer *findTimer;
 @property BOOL hasTables;
+@property NSMutableDictionary<NSString *,id> *referenceCache; // token -> path or NSNull, per document
 @property NSString *findStatus;
 @property NSString *findQuery;
 @property NSRange findSelection;
@@ -708,6 +791,8 @@ static BOOL MarkdownName(NSString *name) {
  ReaderTextContainer *textContainer=[[ReaderTextContainer alloc]initWithSize:NSMakeSize(0,CGFLOAT_MAX)];layoutManager.textContainer=textContainer;
  ReaderPageView *page=[[ReaderPageView alloc]initWithFrame:NSMakeRect(0,0,1000,700) textContainer:textContainer];
  __weak Reader *weakSelf=self;page.onToggle=^(ReaderTable *table){[weakSelf toggleTable:table];};
+ page.resolveReference=^NSString *(NSString *token){return [weakSelf resolveDocumentReference:token];};
+ page.openReference=^(NSString *path){[weakSelf openPath:path];};
  self.text=page;self.text.editable=NO;self.text.selectable=YES;self.text.allowsUndo=NO;self.text.usesFindBar=YES;self.text.delegate=self;
  ReaderTextView=self.text;self.text.textLayoutManager.delegate=self;
  self.text.textContainerInset=NSMakeSize(36,28);self.text.verticallyResizable=YES;self.text.horizontallyResizable=NO;
@@ -759,6 +844,7 @@ static BOOL MarkdownName(NSString *name) {
 }
 // Turns each table's cells into text for the current width. `only` limits it to one table.
 - (void)layoutTablesIn:(NSTextStorage *)storage only:(ReaderTable *)only {
+ [(ReaderPageView *)self.text clearReference];
  CGFloat pane=self.scroll.contentView.bounds.size.width;
  NSMutableArray<NSValue *> *ranges=[NSMutableArray new];NSMutableArray<ReaderTable *> *tables=[NSMutableArray new];
  [storage enumerateAttribute:ReaderTableAttribute inRange:NSMakeRange(0,storage.length) options:0 usingBlock:^(id value,NSRange range,BOOL *stop){
@@ -773,6 +859,29 @@ static BOOL MarkdownName(NSString *name) {
  }
  [storage endEditing];
  ((ReaderTextContainer *)self.text.textContainer).hasTables=YES;
+}
+// A file mentioned in the text. Specs name files from the project root ("spec/07-x.md") rather than
+// from the current file, so try the current folder, then each parent, then the open folder.
+- (NSString *)resolveDocumentReference:(NSString *)token {
+ NSString *base=self.document.path.stringByDeletingLastPathComponent?:self.folderRoot.path;
+ if(!base||!token.length)return nil;
+ NSString *key=[NSString stringWithFormat:@"%@\n%@",base,token];
+ if(!self.referenceCache)self.referenceCache=[NSMutableDictionary new];
+ id cached=self.referenceCache[key];if(cached)return cached==NSNull.null?nil:cached;
+ NSFileManager *fm=NSFileManager.defaultManager;NSString *found=nil;
+ NSMutableArray<NSString *> *candidates=[NSMutableArray new];
+ if([token hasPrefix:@"/"]||[token hasPrefix:@"~"])[candidates addObject:token.stringByExpandingTildeInPath];
+ else{
+  NSString *directory=base;
+  for(int i=0;i<10&&directory.length>1;i++){[candidates addObject:[directory stringByAppendingPathComponent:token]];directory=directory.stringByDeletingLastPathComponent;}
+  if(self.folderRoot)[candidates addObject:[self.folderRoot.path stringByAppendingPathComponent:token]];
+ }
+ for(NSString *candidate in candidates){
+  BOOL directory=NO;
+  if([fm fileExistsAtPath:candidate isDirectory:&directory]&&!directory){found=candidate.stringByStandardizingPath;break;}
+ }
+ self.referenceCache[key]=found?:NSNull.null;
+ return found;
 }
 - (void)toggleTable:(ReaderTable *)table {table.expanded=!table.expanded;[self layoutTablesIn:self.text.textStorage only:table];}
 // The container spans the pane less a margin; the text container hook centres ordinary text in
@@ -858,7 +967,7 @@ static BOOL MarkdownName(NSString *name) {
  NSString *absolute=path.stringByExpandingTildeInPath;
  if(!absolute.isAbsolutePath)absolute=[NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:absolute];
  absolute=absolute.stringByStandardizingPath;
- [self captureViewState];self.loading=YES;self.loadingPath=absolute;
+ [self captureViewState];self.loading=YES;self.loadingPath=absolute;self.referenceCache=nil;
  // A file opened with no folder open shows its own folder, so its neighbours are one click away.
  if(!self.folderRoot)[self openFolder:absolute.stringByDeletingLastPathComponent];
  [self revealInRail:absolute];[self refreshTitle];

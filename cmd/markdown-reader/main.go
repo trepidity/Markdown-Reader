@@ -286,6 +286,38 @@ func run(args []string, out io.Writer) error {
 			emit([]byte("\n"), flags, nil)
 		}
 	}
+	if block, kind, rest, found := splitFrontMatter(document); found {
+		document = rest
+		var pairs []frontPair
+		parsed := false
+		if kind == "yaml" {
+			pairs, parsed = parseMapping(block, 0)
+		}
+		if parsed {
+			grid := struct {
+				Align      []string   `json:"align"`
+				Rows       [][]string `json:"rows"`
+				Properties bool       `json:"properties"`
+			}{Align: []string{"l", "l"}, Properties: true}
+			for _, p := range pairs {
+				grid.Rows = append(grid.Rows, []string{p.key, p.value})
+			}
+			if body, err := json.Marshal(grid); err == nil {
+				emit(body, tableRecord, nil)
+			}
+		} else { // not structured: show it exactly as written
+			for i, l := range block {
+				f := mono | codeBlockLine
+				if i == 0 {
+					f |= codeFirst
+				}
+				if i == len(block)-1 {
+					f |= codeLast
+				}
+				emit([]byte(l+"\n"), f, nil)
+			}
+		}
+	}
 	parser := goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser()
 	start := 0
 	for _, end := range chunkBoundaries(document, chunkTarget) {
