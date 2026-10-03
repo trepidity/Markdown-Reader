@@ -19,6 +19,30 @@ Use **Open…**, the path field, or Finder's Open With. Command-O opens a file,
 Command-R reloads, Command-F finds text, and Command-W releases the document.
 Text is selectable and copyable but cannot be edited. Only one document is retained.
 
+## Readability pass and memory changes (October 3, 2026)
+
+The reader now uses a typographic reading style: New York serif body, SF sans
+headings, a centered ~700 pt measure, code bands, quote bars, hanging list
+indents, rules and aligned monospaced tables, all drawn with TextKit 2 layout
+fragments (no TextKit 1 fallback, no NSTextTable). The helper/reader flag
+contract is documented in `cmd/markdown-reader/main.go`.
+
+Memory changes: the helper reads the file into an exactly sized buffer and
+parses it in chunks split only before column-0 headings outside fences and HTML
+blocks (disabled when link reference definitions exist; output is byte-identical
+to an unchunked parse). The reader streams the pipe into a new text storage with
+no whole-stream buffer and no per-run attributed strings, installs it without a
+copy, and calls `malloc_zone_pressure_relief` after load and close.
+
+Tradeoff: once the helper's stream has started, the previous document is released
+before the new one is built. If the helper dies mid-stream the view is left empty
+with an error (Reload to retry); failures before the stream starts keep the
+previous document.
+
+Single-run peak combined footprint (reader + helper), same machine, sampled every
+20 ms, real helper: 1 MiB 63.7 → 37.8 MiB; 4 MiB 171.7 → 44.3 MiB; 16 MiB (new
+only) 80.8 MiB peak, 65 MB settled. Settled 4 MiB: 47 → 38 MB. Not repeated trials.
+
 ## Measured result
 
 Current native **physical footprint in MiB**, Apple M2 Ultra, macOS 26.7.1.

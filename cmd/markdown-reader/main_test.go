@@ -45,7 +45,7 @@ func TestReadOnlyPresentation(t *testing.T) {
 		links[s] = string(data[n : n+l])
 		data = data[n+l:]
 	}
-	for _, want := range []string{"Heading", "Hello bold and italic", "& *literal*", "• item", "quotation", "[Image: description]", "A", "B", "C", "D"} {
+	for _, want := range []string{"Heading", "Hello bold and italic", "& *literal*", "•\titem", "quotation", "[Image: description]", "A", "B", "C", "D"} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("presentation lost %q: %s", want, text.String())
 		}
@@ -83,6 +83,154 @@ func TestRejectsInvalidDocumentsWithoutPresentation(t *testing.T) {
 		var out bytes.Buffer
 		if err := run(args, &out); err == nil || out.Len() != 0 {
 			t.Errorf("accepted invalid invocation %v", args)
+		}
+	}
+}
+
+// renderRecords writes source to a temporary file and returns the decoded
+// presentation stream produced by the real run seam.
+func renderRecords(t *testing.T, source string) []record {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "document.md")
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run([]string{path}, &out); err != nil {
+		t.Fatal(err)
+	}
+	return presentationRecords(t, out.Bytes())
+}
+
+type want struct {
+	text  string
+	flags uint32
+}
+
+func expectRecords(t *testing.T, source string, expected []want) {
+	t.Helper()
+	records := renderRecords(t, source)
+	var got []want
+	for _, r := range records {
+		got = append(got, want{string(r.body), r.flags})
+	}
+	if len(got) != len(expected) {
+		t.Fatalf("got %d records %q, want %q", len(got), got, expected)
+	}
+	for i := range got {
+		if got[i] != expected[i] {
+			t.Errorf("record %d = %q/%#x, want %q/%#x", i, got[i].text, got[i].flags, expected[i].text, expected[i].flags)
+		}
+	}
+}
+
+const (
+	marker    = 128
+	listLevel = 1 << 16
+	quoteLvl  = 1 << 24
+	codeLine  = 4 | 16
+	firstLine = 4096
+	lastLine  = 8192
+	tableRow  = 4 | 64
+)
+
+// Fails if the marker flag leaks onto item text, markers use a space instead of
+// a tab, ordered numbering is lost, or nesting does not deepen the list level.
+func TestListMarkerRunIsFlaggedSeparatelyFromItemTextAtEachDepth(t *testing.T) {
+	expectRecords(t, "- a\n  - b\n\n3. x\n4. y\n", []want{
+		{"•\t", marker | listLevel}, {"a", listLevel}, {"\n", listLevel},
+		{"•\t", marker | 2*listLevel}, {"b", 2 * listLevel}, {"\n", 2 * listLevel},
+		{"3.\t", marker | listLevel}, {"x", listLevel}, {"\n", listLevel},
+		{"4.\t", marker | listLevel}, {"y", listLevel}, {"\n", listLevel},
+	})
+}
+
+// Fails if block quotes reuse the list-depth bits, which would indent quotes as
+// lists natively and make a list inside a quote indistinguishable from nesting.
+func TestQuoteDepthIsCarriedSeparatelyFromListDepth(t *testing.T) {
+	expectRecords(t, "> a\n>\n> > b\n>\n> - c\n", []want{
+		{"a", quoteLvl}, {"\n", quoteLvl},
+		{"b", 2 * quoteLvl}, {"\n", 2 * quoteLvl},
+		{"•\t", marker | quoteLvl | listLevel}, {"c", quoteLvl | listLevel}, {"\n", quoteLvl | listLevel},
+	})
+}
+
+// Fails if a spacer record follows code, a line lacks its own paragraph newline
+// (including a final source line without one), or first/last line bits are lost.
+func TestCodeBlockLinesAreParagraphsWithFirstAndLastMarks(t *testing.T) {
+	expectRecords(t, "```\none\ntwo\n```\n\n```\n```\n\n    solo\n\n```\nlast", []want{
+		{"one\n", codeLine | firstLine}, {"two\n", codeLine | lastLine},
+		{"\n", codeLine | firstLine | lastLine},
+		{"solo\n", codeLine | firstLine | lastLine},
+		{"last\n", codeLine | firstLine | lastLine},
+	})
+}
+
+// Fails if the break is drawn with characters (which wrap or copy as junk) or
+// loses its flag, which the native side uses to draw a rule.
+func TestThematicBreakIsOneFlaggedEmptyParagraph(t *testing.T) {
+	expectRecords(t, "a\n\n---\n\nb\n", []want{
+		{"a", 0}, {"\n", 0}, {"\n", 32}, {"b", 0}, {"\n", 0},
+	})
+}
+
+// Fails if columns are padded by bytes instead of characters, alignment is
+// ignored, inline markup leaks into cells, or the header separator is missing.
+func TestTableRowsAreAlignedMonospacedLines(t *testing.T) {
+	expectRecords(t, "| Left | Right | Mid |\n|:--|--:|:-:|\n| `a` | bbbbbbb | é |\n", []want{
+		{"Left  │    Right  │  Mid\n", tableRow | 1},
+		{"──────┼───────────┼─────\n", tableRow},
+		{"a     │  bbbbbbb  │   é\n", tableRow},
+	})
+}
+
+// The chunked parse must be invisible: every split the chunker may choose has to
+// yield the same bytes as one whole-document parse. Fails if a split is placed
+// inside a fence, an HTML block, or a list/quote, or if reference definitions
+// stop resolving across sections.
+func TestChunkedRenderingIsByteIdenticalToWholeDocument(t *testing.T) {
+	documents := map[string]string{
+		"constructs": "# One\n\nIntro *text* with [ref][] later.\n\n" +
+			"```\n# not a heading\n\n# still code\n```\n\n" +
+			"# Two\n\n~~~~ python\n~~~\n\n# inside tilde fence\n\n````\n~~~~\n\n" +
+			"# Three\n\n<!-- comment\n\n# hidden\n\n-->\n\n" +
+			"# Four\n\n<pre>\n\n# preformatted\n\n</PRE>\n\n" +
+			"<?php\n\n# processing\n\n?>\n\n<!DOCTYPE x\n\n# decl\n\n>\n\n<![CDATA[\n\n# cdata\n\n]]>\n\n" +
+			"# Five\n\n1. one\n2. two\n\n# Six\n\n3. three\n4. four\n\n- loose\n\n- list\n\n" +
+			"# Seven\n\n> quoted\n>\n> > deeper\n\n| A | B |\n|---|--:|\n| c | d |\n\n" +
+			"#\n\n#\tTab heading\n\n#hashtag paragraph\n\n####### seven hashes\n\n" +
+			"<div>\n# inside div\n</div>\n\n  ~~~\n\n# indented fence content\n\n  ~~~\n\n" +
+			"``` a`b\n\n# Eight\n\n```\nunterminated\n\n# to the end\n",
+		// The scanner cannot see list or HTML-block context, so these mis-pair
+		// fences; the parsed-chunk check must reject the resulting boundary.
+		"fence in list item":       "# A\n\n1. a\n\n   ```\n   nested\n\n# B\n\n```\ncode\n\n# fenced heading\n\n```\n\n# C\n",
+		"fence in html block":      "# A\n\n<div>\n```\n</div>\n\n```\nhidden\n\n# fenced after div\n\n```\n\n# B\n",
+		"comment after list fence": "# A\n\n1. a\n\n   ```\n\n# B\n\n<!--\n```\n\n# hidden\n\n-->\n\n# C\n",
+		"references":               "# One\n\nSee [the site][site] and [site].\n\n# Two\n\n[site]: https://example.com \"Title\"\n\n# Three\n\nAgain [site].\n",
+		"quoted reference":         "# One\n\nSee [x][].\n\n# Two\n\n> [x]: /quoted\n",
+		"bullet reference":         "# One\n\nSee [y].\n\n# Two\n\n- [y]: /bullet\n",
+		"ordered reference":        "# One\n\nSee [z].\n\n# Two\n\n1. [z]: /ordered\n",
+	}
+	defer func(saved int) { chunkTarget = saved }(chunkTarget)
+	for name, document := range documents {
+		path := filepath.Join(t.TempDir(), "document.md")
+		if err := os.WriteFile(path, []byte(document), 0600); err != nil {
+			t.Fatal(err)
+		}
+		chunkTarget = 1 << 30
+		var whole bytes.Buffer
+		if err := run([]string{path}, &whole); err != nil {
+			t.Fatal(err)
+		}
+		for _, target := range []int{1, 16, 64, 200} {
+			chunkTarget = target
+			var chunked bytes.Buffer
+			if err := run([]string{path}, &chunked); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(whole.Bytes(), chunked.Bytes()) {
+				t.Errorf("%s: chunk target %d changed the presentation\nwhole:   %q\nchunked: %q", name, target, whole.String(), chunked.String())
+			}
 		}
 	}
 }
