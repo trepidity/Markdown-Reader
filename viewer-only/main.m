@@ -809,6 +809,10 @@ static BOOL MarkdownName(NSString *name) {
 - (void)cancel {@synchronized(self){_cancelled=YES;if(_task.running)[_task terminate];}}
 @end
 
+// The rail grows to show the longest visible name in full, up to RailMaxWidth; longer names
+// truncate in the middle. The pane beside it keeps at least RailMinPane.
+static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellChrome=24,RailSlack=24;
+
 @interface Reader : NSObject <NSApplicationDelegate,NSTextViewDelegate,NSMenuItemValidation,NSTextLayoutManagerDelegate,NSOutlineViewDataSource,NSOutlineViewDelegate,NSSplitViewDelegate>
 @property NSWindow *window;
 @property NSTextView *text;
@@ -835,6 +839,8 @@ static BOOL MarkdownName(NSString *name) {
 @property NSOutlineView *outline;
 @property ReaderNode *folderRoot;
 @property BOOL syncingRail;
+@property BOOL fittingRail;
+@property BOOL railSizedByReader; // the reader dragged the divider; stop auto-fitting
 @property NSUInteger pendingDone;
 @property BOOL loading;
 @property NSString *pendingPath;
@@ -1145,13 +1151,36 @@ static BOOL MarkdownName(NSString *name) {
  if(!absolute.isAbsolutePath)absolute=[NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:absolute];
  absolute=absolute.stringByStandardizingPath;
  self.folderRoot=[ReaderNode nodeWithPath:absolute directory:YES];
+ self.railSizedByReader=NO;
  [self.outline reloadData];[self setRailVisible:YES];[self.outline expandItem:self.folderRoot];
- [self revealInRail:self.document.path];[self refreshTitle];
+ [self revealInRail:self.document.path];[self fitRail];[self refreshTitle];
 }
 - (void)setRailVisible:(BOOL)visible {
  if(visible==!self.rail.hidden)return;
  self.rail.hidden=!visible;
- if(visible){[self.split layoutSubtreeIfNeeded];if(self.rail.frame.size.width<170)[self.split setPosition:250 ofDividerAtIndex:0];}
+ if(visible)[self fitRail];
+}
+// Width that shows the longest name among the visible rows in full, within the rail's limits.
+- (CGFloat)railFitWidth {
+ NSDictionary *attributes=@{NSFontAttributeName:[NSFont systemFontOfSize:NSFont.systemFontSize]};
+ CGFloat need=0;
+ for(NSInteger row=0;row<self.outline.numberOfRows;row++){
+  ReaderNode *node=[self.outline itemAtRow:row];
+  need=MAX(need,NSMinX([self.outline frameOfCellAtColumn:0 row:row])+RailCellChrome+ceil([node.name sizeWithAttributes:attributes].width));
+ }
+ return MIN(RailMaxWidth,MAX(RailMinWidth,need+RailSlack));
+}
+// Only ever widens, and never once the reader has dragged the divider.
+- (void)fitRail {
+ if(self.railSizedByReader||self.rail.hidden)return;
+ [self.split layoutSubtreeIfNeeded];
+ CGFloat width=MIN([self railFitWidth],MAX(RailMinWidth,self.split.bounds.size.width-RailMinPane));
+ if(width<=self.rail.frame.size.width)return;
+ self.fittingRail=YES;[self.split setPosition:width ofDividerAtIndex:0];self.fittingRail=NO;
+}
+- (void)outlineViewItemDidExpand:(NSNotification *)note {[self fitRail];}
+- (void)splitViewDidResizeSubviews:(NSNotification *)note {
+ if(!self.fittingRail&&note.userInfo[@"NSSplitViewDividerIndex"])self.railSizedByReader=YES;
 }
 - (void)toggleRail:(id)sender {if(self.folderRoot)[self setRailVisible:self.rail.hidden];}
 - (void)closeFolder:(id)sender {
@@ -1206,8 +1235,8 @@ static BOOL MarkdownName(NSString *name) {
  ReaderNode *node=[self.outline itemAtRow:self.outline.selectedRow];
  if(node&&!node.directory)[self load:node.path];
 }
-- (CGFloat)splitView:(NSSplitView *)split constrainMinCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index {return MAX(proposed,170);}
-- (CGFloat)splitView:(NSSplitView *)split constrainMaxCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index {return MIN(proposed,420);}
+- (CGFloat)splitView:(NSSplitView *)split constrainMinCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index {return MAX(proposed,RailMinWidth);}
+- (CGFloat)splitView:(NSSplitView *)split constrainMaxCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index {return MIN(proposed,RailMaxWidth);}
 - (BOOL)splitView:(NSSplitView *)split shouldAdjustSizeOfSubview:(NSView *)view {return view!=self.rail;}
 - (BOOL)splitView:(NSSplitView *)split canCollapseSubview:(NSView *)view {return NO;}
 #pragma mark - Find count
