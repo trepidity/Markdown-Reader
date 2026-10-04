@@ -840,7 +840,6 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
 @property ReaderNode *folderRoot;
 @property BOOL syncingRail;
 @property BOOL fittingRail;
-@property NSUInteger measureGeneration; // bumped whenever the text or its layout width changes
 @property BOOL railSizedByReader; // the reader dragged the divider; stop auto-fitting
 @property NSUInteger pendingDone;
 @property BOOL loading;
@@ -957,35 +956,13 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  self.referenceCache[key]=found?:NSNull.null;
  return found;
 }
-- (void)toggleTable:(ReaderTable *)table {table.expanded=!table.expanded;[self layoutTablesIn:self.text.textStorage only:table];[self measureDocument];}
-// TextKit 2 estimates the height of text it has not laid out, an estimate that stays just ahead of
-// the viewport, so the scroller shows the end of a long document long before it. Lay a document up to
-// MeasureLimit characters out in short slices between events: the height becomes exact without
-// blocking a scroll or a load. Laid-out text is kept (about 170 bytes per character), so a longer
-// document keeps the lazy estimate rather than pay that in memory.
-static const NSInteger MeasureLimit=100000,MeasureSlice=8000;
-- (void)measureDocument {
- NSUInteger generation=++self.measureGeneration;
- if(self.text.textStorage.length>(NSUInteger)MeasureLimit)return;
- dispatch_async(dispatch_get_main_queue(),^{[self measureFrom:self.text.textLayoutManager.documentRange.location generation:generation];});
-}
-- (void)measureFrom:(id<NSTextLocation>)start generation:(NSUInteger)generation {
- if(generation!=self.measureGeneration)return;
- NSTextLayoutManager *layout=self.text.textLayoutManager;
- id<NSTextLocation> documentEnd=layout.documentRange.endLocation;
- id<NSTextLocation> end=[layout.textContentManager locationFromLocation:start withOffset:MeasureSlice];
- if(!end||[end compare:documentEnd]!=NSOrderedAscending)end=documentEnd;
- [layout ensureLayoutForRange:[[NSTextRange alloc]initWithLocation:start endLocation:end]];
- if(end==documentEnd){[layout.textViewportLayoutController layoutViewport];return;} // lets the view's height follow
- dispatch_async(dispatch_get_main_queue(),^{[self measureFrom:end generation:generation];});
-}
+- (void)toggleTable:(ReaderTable *)table {table.expanded=!table.expanded;[self layoutTablesIn:self.text.textStorage only:table];}
 // The container spans the pane less a margin; the text container hook centres ordinary text in
 // a column of MeasureWidth, so only the table layout needs to follow width changes.
 - (void)updateMeasure:(NSNotification *)note {
  NSSize inset=NSMakeSize(PageMargin,28);
  if(!NSEqualSizes(inset,self.text.textContainerInset))self.text.textContainerInset=inset; // no-op when unchanged: no layout loop
  if(self.hasTables)[self layoutTablesIn:self.text.textStorage only:nil];
- [self measureDocument]; // wrapping, and so height, follows the width
 }
 - (NSTextLayoutFragment *)textLayoutManager:(NSTextLayoutManager *)manager textLayoutFragmentForLocation:(id<NSTextLocation>)location inTextElement:(NSTextElement *)element {
  if([element isKindOfClass:NSTextParagraph.class]){
@@ -1016,7 +993,7 @@ static const NSInteger MeasureLimit=100000,MeasureSlice=8000;
   [layout.textViewportLayoutController layoutViewport];[self.text setNeedsDisplay:YES];
  }
  [self.text setSelectedRange:NSMakeRange(0,0)];[self.text scrollRangeToVisible:NSMakeRange(0,0)];
- self.emptyLabel.hidden=storage.length>0;[self measureDocument];
+ self.emptyLabel.hidden=storage.length>0;
 }
 // The reader's place in a document, kept for the session so switching away and back resumes there.
 - (ReaderDocument *)documentForPath:(NSString *)path {
