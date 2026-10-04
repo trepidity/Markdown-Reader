@@ -13,7 +13,7 @@ import "C"
 import (
 	"embed"
 	"encoding/json"
-	"markdownviewer/internal/app"
+	"markdownreader/internal/app"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,10 +44,10 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
-	if override := os.Getenv("MARKDOWN_VIEWER_CONFIG"); override != "" {
+	if override := os.Getenv("MARKDOWN_READER_CONFIG"); override != "" {
 		config = override
 	}
-	application = app.New(filepath.Join(config, "Markdown Viewer", "settings.json"))
+	application = app.New(filepath.Join(config, "Markdown Reader", "settings.json"))
 	html, _ := assets.ReadFile("ui/index.html")
 	css, _ := assets.ReadFile("ui/style.css")
 	js, _ := assets.ReadFile("ui/app.js")

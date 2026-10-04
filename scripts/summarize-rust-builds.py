@@ -9,10 +9,10 @@ from pathlib import Path
 root = Path(__file__).resolve().parent.parent
 rows = []
 for name in ("egui", "iced", "slint", "fltk", "wry"):
-    path = root / f"dist/rust-comparison/Markdown Viewer Rust {name}.app/Contents/MacOS/viewer-{name}"
+    path = root / f"dist/rust-comparison/Markdown Reader Rust {name}.app/Contents/MacOS/viewer-{name}"
     data = path.read_bytes()
     rows.append(dict(build=f"Rust {name}", bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
-go = root / "dist/Markdown Viewer.app/Contents/MacOS/markdown-viewer"
+go = root / "dist/Markdown Reader Editor.app/Contents/MacOS/markdown-reader-editor"
 if go.exists():
     data = go.read_bytes()
     rows.append(dict(build="Go WebKit", bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))

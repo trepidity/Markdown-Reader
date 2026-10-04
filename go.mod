@@ -1,4 +1,4 @@
-module markdownviewer
+module markdownreader
 
 go 1.25.0
 

@@ -2,7 +2,7 @@ use iced::{
     Element, Length, Theme,
     widget::{button, column, row, scrollable, text, text_editor, text_input},
 };
-use markdown_viewer_rust::shell::Model;
+use markdown_reader_rust::shell::Model;
 #[derive(Debug, Clone)]
 enum Message {
     Close(iced::window::Id),
@@ -130,7 +130,7 @@ impl Viewer {
 }
 fn main() -> iced::Result {
     iced::application(Viewer::new, Viewer::update, Viewer::view)
-        .title("Markdown Viewer Rust Iced")
+        .title("Markdown Reader Rust Iced")
         .theme(|v: &Viewer| {
             if v.model.dark {
                 Theme::Dark

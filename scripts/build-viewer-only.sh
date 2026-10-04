@@ -11,7 +11,7 @@ python3 - "$bundle" <<'PY'
 import plistlib, sys
 from pathlib import Path
 p = dict(CFBundleName='Markdown Reader', CFBundleDisplayName='Markdown Reader',
-         CFBundleIdentifier='org.markdownviewer.reader', CFBundleExecutable='reader', CFBundleIconFile='AppIcon',
+         CFBundleIdentifier='org.markdownreader.reader', CFBundleExecutable='reader', CFBundleIconFile='AppIcon',
          CFBundlePackageType='APPL', CFBundleShortVersionString='0.1.0', CFBundleVersion='1',
          LSMinimumSystemVersion='13.0', NSHighResolutionCapable=True, NSPrincipalClass='NSApplication',
          CFBundleDocumentTypes=[dict(CFBundleTypeName='Markdown', CFBundleTypeRole='Viewer',

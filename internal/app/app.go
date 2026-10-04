@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"markdownviewer/internal/document"
+	"markdownreader/internal/document"
 	"net/url"
 	"os"
 	"path/filepath"

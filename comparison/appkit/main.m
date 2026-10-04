@@ -42,7 +42,7 @@ static id withoutNulls(id value) {
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
  MVInitialize("AppKit");
  self.window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,1080,780) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskResizable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
- self.window.title=@"Markdown Viewer — AppKit";self.window.minSize=NSMakeSize(1000,600);self.window.delegate=self;
+ self.window.title=@"Markdown Reader — AppKit";self.window.minSize=NSMakeSize(1000,600);self.window.delegate=self;
  self.path=[NSTextField new];self.path.placeholderString=@"File or folder path";self.path.target=self;self.path.action=@selector(openPath:);[self.path.widthAnchor constraintGreaterThanOrEqualToConstant:220].active=YES;
  self.mode=[NSSegmentedControl segmentedControlWithLabels:@[@"Preview",@"Edit"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(changeMode:)];self.mode.selectedSegment=0;
  NSStackView *top=[NSStackView stackViewWithViews:@[[self button:@"Open…" action:@selector(open:)],self.path,[self button:@"Load path" action:@selector(openPath:)],self.mode,[self button:@"Undo" action:@selector(undo:)],[self button:@"Redo" action:@selector(redo:)],[self button:@"Save Copy…" action:@selector(saveCopy:)]]];top.spacing=8;
@@ -96,7 +96,7 @@ static id withoutNulls(id value) {
 - (void)apply:(NSDictionary *)s action:(NSString *)action {
  if([action isEqual:@"refresh"]&&![s[@"reloadedPaths"] containsObject:self.state[@"path"]]){self.status.stringValue=s[@"watchError"]?:@"";return;}
  BOOL changed=![s[@"path"] isEqual:self.state[@"path"]];BOOL contentChanged=![s[@"html"] isEqual:self.state[@"html"]]||![s[@"theme"] isEqual:self.state[@"theme"]];self.state=s;self.applying=YES;
- self.window.title=[NSString stringWithFormat:@"%@ — AppKit",[s[@"path"] length]?[s[@"path"] lastPathComponent]:@"Markdown Viewer"];
+ self.window.title=[NSString stringWithFormat:@"%@ — AppKit",[s[@"path"] length]?[s[@"path"] lastPathComponent]:@"Markdown Reader"];
  if(changed||[@[@"undo",@"redo",@"reload",@"refresh"] containsObject:action])self.editor.string=s[@"text"]?:@"";
  if(changed)self.mode.selectedSegment=0;
  self.previewScroll.hidden=self.mode.selectedSegment==1;self.editorScroll.hidden=self.mode.selectedSegment==0;

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"markdownviewer/internal/document"
+	"markdownreader/internal/document"
 	"os"
 	"path/filepath"
 	"regexp"

@@ -46,7 +46,7 @@ function apply(s,action){if(action==='search'||s.unchanged)return;const live=act
  $('sidebar').hidden=!s.folder;$('sidebarDivider').hidden=!s.folder;if(!sidebarDrag)resizeSidebar(s.sidebarWidth);$('folderName').textContent=basename(s.folder||'');updateSidebarFiles(s);
  $('welcomeRecent').replaceChildren();$('recentList').replaceChildren();for(const [i,path] of (s.recent||[]).entries()){if(i<3)$('welcomeRecent').append(recentButton(path));$('recentList').append(recentButton(path))}if(!s.recent?.length)$('recentList').textContent='Your recently opened files will appear here.';
  updateOpenDocuments();if(!$('searchPanel').hidden&&!searchNavigating)scheduleSearch();
- post({action:'title',title:s.path?`${basename(s.path)} — Markdown Viewer`:'Markdown Viewer'});view();if(live){$('editor').setSelectionRange(start,end);main.scrollTop=scroll;$('sidebar').scrollTop=sideScroll;}
+ post({action:'title',title:s.path?`${basename(s.path)} — Markdown Reader`:'Markdown Reader'});view();if(live){$('editor').setSelectionRange(start,end);main.scrollTop=scroll;$('sidebar').scrollTop=sideScroll;}
 }
 function updateSidebarFiles(s){
  const list=$('files'),paths=s.files||[];

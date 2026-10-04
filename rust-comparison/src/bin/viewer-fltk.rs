@@ -8,11 +8,11 @@ use fltk::{
     text::{TextBuffer, TextEditor},
     window::Window,
 };
-use markdown_viewer_rust::shell::Model;
+use markdown_reader_rust::shell::Model;
 use std::{cell::RefCell, rc::Rc};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = app::App::default();
-    let mut win = Window::new(100, 100, 1080, 780, "Markdown Viewer Rust FLTK");
+    let mut win = Window::new(100, 100, 1080, 780, "Markdown Reader Rust FLTK");
     let mut path = Input::new(10, 10, 555, 30, "");
     let mut buttons = Vec::new();
     for (i, (label, action)) in [

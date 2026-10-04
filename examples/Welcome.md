@@ -1,6 +1,6 @@
 # A quieter place for words
 
-Markdown Viewer keeps the document at the center. Read first, then press **⌘E** whenever you want to write.
+Markdown Reader keeps the document at the center. Read first, then press **⌘E** whenever you want to write.
 
 > Good tools make room for the work.
 

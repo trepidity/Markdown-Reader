@@ -32,6 +32,6 @@ for variant in ['WebKit', 'AppKit', 'Fyne', 'Qt', 'Gio']:
 with (output/'memory.csv').open('w') as f:
     writer=csv.DictWriter(f,fieldnames=['variant','stage','process_count','footprint_mib'],lineterminator='\n');writer.writeheader();writer.writerows(summary)
 with (output/'builds.json').open('w') as f:
-    json.dump([dict(variant=n,binary_sha256=hashlib.sha256((root/'dist'/'comparison'/f'Markdown Viewer {n}.app'/'Contents'/'MacOS'/'viewer').read_bytes()).hexdigest()) for n in ['WebKit','AppKit','Fyne','Qt','Gio']],f,indent=2);f.write('\n')
+    json.dump([dict(variant=n,binary_sha256=hashlib.sha256((root/'dist'/'comparison'/f'Markdown Reader {n}.app'/'Contents'/'MacOS'/'viewer').read_bytes()).hexdigest()) for n in ['WebKit','AppKit','Fyne','Qt','Gio']],f,indent=2);f.write('\n')
 for variant in ['WebKit','AppKit','Fyne','Qt','Gio']:
     print(variant, ' | '.join(str(s['footprint_mib']) for s in summary if s['variant']==variant))

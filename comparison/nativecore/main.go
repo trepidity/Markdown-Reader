@@ -5,7 +5,7 @@ package main
 */
 import "C"
 import (
-	"markdownviewer/comparison/session"
+	"markdownreader/comparison/session"
 	"unsafe"
 )
 

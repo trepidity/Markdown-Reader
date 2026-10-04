@@ -23,7 +23,7 @@ extern char *goCommand(char *raw);
  [config.userContentController addScriptMessageHandler:self name:@"app"];
  self.web=[[WKWebView alloc]initWithFrame:NSMakeRect(0,0,1080,780) configuration:config];self.web.navigationDelegate=self;self.web.UIDelegate=self;
  self.window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,1080,780) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable backing:NSBackingStoreBuffered defer:NO];
- self.window.title=@"Markdown Viewer";self.window.minSize=NSMakeSize(640,450);self.window.delegate=self;self.window.contentView=self.web;[self.window center];[self.window makeKeyAndOrderFront:nil];
+ self.window.title=@"Markdown Reader";self.window.minSize=NSMakeSize(640,450);self.window.delegate=self;self.window.contentView=self.web;[self.window center];[self.window makeKeyAndOrderFront:nil];
  [self.web loadHTMLString:self.page baseURL:nil];[NSApp activateIgnoringOtherApps:YES];
 }
 - (void)webView:(WKWebView *)web runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(BOOL))completion {
@@ -65,7 +65,7 @@ extern char *goCommand(char *raw);
  if([action isEqualToString:@"dialogNew"]){[self newFile:nil];return;}
  if([action isEqualToString:@"dialogSave"]){[self saveCopy:nil];return;}
  if([action isEqualToString:@"closed"]){if([body[@"ok"] boolValue]){if(self.quitting){[NSApp replyToApplicationShouldTerminate:YES];}else{[self.window orderOut:nil];[self send:@"resume" value:nil];}}else if(self.quitting){[NSApp replyToApplicationShouldTerminate:NO];}self.quitting=NO;return;}
- if([action isEqualToString:@"title"]){self.window.title=body[@"title"]?:@"Markdown Viewer";return;}
+ if([action isEqualToString:@"title"]){self.window.title=body[@"title"]?:@"Markdown Reader";return;}
  NSData *data=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];if(!data)return;
  NSString *json=[[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding];char *result=goCommand((char *)json.UTF8String);
  NSString *response=[NSString stringWithUTF8String:result];free(result);
@@ -85,7 +85,7 @@ void runApp(const char *html,const char *path){@autoreleasepool{
  [NSApplication sharedApplication];[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];Viewer *v=[Viewer new];v.page=[NSString stringWithUTF8String:html];v.pending=[NSMutableArray new];if(path&&*path)[v.pending addObject:[NSString stringWithUTF8String:path]];NSApp.delegate=v;
  NSMenu *bar=[NSMenu new];NSApp.mainMenu=bar;NSEventModifierFlags cmd=NSEventModifierFlagCommand;
  NSMenuItem *appItem=[NSMenuItem new];[bar addItem:appItem];NSMenu *appMenu=[NSMenu new];appItem.submenu=appMenu;
- item(appMenu,@"About Markdown Viewer",@selector(orderFrontStandardAboutPanel:),@"",NSApp,0);[appMenu addItem:[NSMenuItem separatorItem]];item(appMenu,@"Hide Markdown Viewer",@selector(hide:),@"h",NSApp,cmd);item(appMenu,@"Quit Markdown Viewer",@selector(terminate:),@"q",NSApp,cmd);
+ item(appMenu,@"About Markdown Reader",@selector(orderFrontStandardAboutPanel:),@"",NSApp,0);[appMenu addItem:[NSMenuItem separatorItem]];item(appMenu,@"Hide Markdown Reader",@selector(hide:),@"h",NSApp,cmd);item(appMenu,@"Quit Markdown Reader",@selector(terminate:),@"q",NSApp,cmd);
  NSMenuItem *file=[NSMenuItem new];file.title=@"File";[bar addItem:file];NSMenu *fm=[[NSMenu alloc]initWithTitle:@"File"];file.submenu=fm;
  item(fm,@"New…",@selector(newFile:),@"n",v,cmd);item(fm,@"Open File or Folder…",@selector(open:),@"o",v,cmd);item(fm,@"Open Recent…",@selector(recent:),@"o",v,cmd|NSEventModifierFlagShift);item(fm,@"Save",@selector(save:),@"s",v,cmd);item(fm,@"Save Copy…",@selector(saveCopy:),@"s",v,cmd|NSEventModifierFlagShift);item(fm,@"Close Window",@selector(performClose:),@"w",v.window,cmd);
  NSMenuItem *edit=[NSMenuItem new];edit.title=@"Edit";[bar addItem:edit];NSMenu *em=[[NSMenu alloc]initWithTitle:@"Edit"];edit.submenu=em;

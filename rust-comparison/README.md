@@ -13,11 +13,11 @@ CMake (FLTK builds its C++ toolkit from the pinned crate sources):
 
 ```sh
 ./scripts/build-rust-comparisons.sh
-open "dist/rust-comparison/Markdown Viewer Rust egui.app"
-open "dist/rust-comparison/Markdown Viewer Rust iced.app"
-open "dist/rust-comparison/Markdown Viewer Rust slint.app"
-open "dist/rust-comparison/Markdown Viewer Rust fltk.app"
-open "dist/rust-comparison/Markdown Viewer Rust wry.app"
+open "dist/rust-comparison/Markdown Reader Rust egui.app"
+open "dist/rust-comparison/Markdown Reader Rust iced.app"
+open "dist/rust-comparison/Markdown Reader Rust slint.app"
+open "dist/rust-comparison/Markdown Reader Rust fltk.app"
+open "dist/rust-comparison/Markdown Reader Rust wry.app"
 ```
 
 Each bundle is ad-hoc signed for local use. Nothing is installed or changes file

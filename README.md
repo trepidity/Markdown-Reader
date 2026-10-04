@@ -61,6 +61,6 @@ python3 scripts/test-reader-plugins.py   # needs the built bundle and WebKit ser
 - Go tests drive the helper's real output stream and plugin processes. They do not prove native behaviour, which is checked by running the bundled app.
 - Memory measurements and method are in [viewer-only/README.md](viewer-only/README.md) and [viewer-only/results](viewer-only/results).
 
-The repository also still contains the earlier **Markdown Viewer** editor build (`cmd/markdown-viewer`, `internal/`, `./scripts/build.sh`) and the comparison prototypes ([comparison](comparison/README.md), [rust-comparison](rust-comparison/README.md)). They are kept for reference and are not the current product. [VERIFICATION.md](VERIFICATION.md) records that earlier work.
+The repository also still contains the earlier editor build, `Markdown Reader Editor.app` (`cmd/markdown-reader-editor`, `internal/`, `./scripts/build.sh`) and the comparison prototypes ([comparison](comparison/README.md), [rust-comparison](rust-comparison/README.md)). They are kept for reference and are not the current product. [VERIFICATION.md](VERIFICATION.md) records that earlier work.
 
 The parser uses [Goldmark](https://github.com/yuin/goldmark). Dependencies are pinned in `go.mod` and `go.sum`.

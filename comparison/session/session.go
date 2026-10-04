@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"golang.org/x/net/html"
-	"markdownviewer/internal/app"
+	"markdownreader/internal/app"
 )
 
 type Run struct {
@@ -50,10 +50,10 @@ type Session struct {
 
 func New(config string) *Session { return &Session{core: app.New(config)} }
 func Config(variant string) string {
-	root := os.Getenv("MARKDOWN_VIEWER_CONFIG")
+	root := os.Getenv("MARKDOWN_READER_CONFIG")
 	if root == "" {
 		root, _ = os.UserConfigDir()
-		root = filepath.Join(root, "Markdown Viewer Comparisons", variant)
+		root = filepath.Join(root, "Markdown Reader Comparisons", variant)
 	}
 	return filepath.Join(root, "settings.json")
 }

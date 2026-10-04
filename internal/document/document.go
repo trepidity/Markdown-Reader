@@ -150,7 +150,7 @@ func (d *Document) SaveAs(path string) error {
 	return nil
 }
 func AtomicWrite(path string, data []byte, mode os.FileMode) error {
-	f, e := os.CreateTemp(filepath.Dir(path), ".markdown-viewer-*")
+	f, e := os.CreateTemp(filepath.Dir(path), ".markdown-reader-*")
 	if e != nil {
 		return e
 	}

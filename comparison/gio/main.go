@@ -15,8 +15,8 @@ import (
 	"gioui.org/widget/material"
 	"gioui.org/x/richtext"
 	"image/color"
-	"markdownviewer/comparison/session"
-	core "markdownviewer/internal/app"
+	"markdownreader/comparison/session"
+	core "markdownreader/internal/app"
 	"os"
 	"path/filepath"
 	"strings"
@@ -328,7 +328,7 @@ func (v *viewer) draw(gtx layout.Context) layout.Dimensions {
 func main() {
 	go func() {
 		w := new(app.Window)
-		w.Option(app.Title("Markdown Viewer — Gio"), app.Size(unit.Dp(1080), unit.Dp(780)))
+		w.Option(app.Title("Markdown Reader — Gio"), app.Size(unit.Dp(1080), unit.Dp(780)))
 		v := &viewer{w: w, engine: session.New(session.Config("Gio")), theme: material.NewTheme(), buttons: map[string]*widget.Clickable{}}
 		v.theme.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
 		v.path.SingleLine = true

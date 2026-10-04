@@ -7,7 +7,7 @@
 - `go vet ./...`, JavaScript syntax checking, shell syntax checking, and `plutil -lint Info.plist`: passed.
 - `scripts/build.sh`: built the arm64 macOS app. Ad-hoc signature verification passed.
 
-The Go commands used `GOCACHE=/private/tmp/markdown-viewer-go-cache` because the default shared cache was restricted in this environment.
+The Go commands used `GOCACHE=/private/tmp/markdown-reader-go-cache` because the default shared cache was restricted in this environment.
 
 ## Native AppKit/WebKit checks
 
@@ -69,8 +69,8 @@ Reproduce the WebKit regression run on macOS:
 
 ```sh
 ./scripts/build-ui-tests.sh
-open -W '/private/tmp/markdown-viewer-ui-tests/Markdown Viewer UI Tests.app'
-cat /private/tmp/markdown-viewer-ui-tests/results.json
+open -W '/private/tmp/markdown-reader-ui-tests/Markdown Reader UI Tests.app'
+cat /private/tmp/markdown-reader-ui-tests/results.json
 ```
 
 The test bundle exits nonzero on failures and writes an explicit failures array. Launch Services may report only launcher status, so inspect that array. The harness uses disposable state and does not connect to the production Go instance.
@@ -131,11 +131,11 @@ Priority optimization candidates: clear discarded history references, avoid full
 Reproduction:
 
 ```sh
-GOCACHE=/private/tmp/markdown-viewer-go-cache go test ./internal/app -run '^$' \
+GOCACHE=/private/tmp/markdown-reader-go-cache go test ./internal/app -run '^$' \
   -bench 'BenchmarkDispatcher|BenchmarkRepeatedHeadingsStress' -benchmem -benchtime=200ms -count=3
 mkdir -p /private/tmp/markdown-performance
-MARKDOWN_VIEWER_PERF=1 MARKDOWN_VIEWER_PROFILE_DIR=/private/tmp/markdown-performance \
-  GOCACHE=/private/tmp/markdown-viewer-go-cache go test ./internal/app \
+MARKDOWN_READER_PERF=1 MARKDOWN_READER_PROFILE_DIR=/private/tmp/markdown-performance \
+  GOCACHE=/private/tmp/markdown-reader-go-cache go test ./internal/app \
   -run '^TestPerformanceMemory$' -v -count=1
 go tool pprof -top -inuse_space /private/tmp/markdown-performance/256KiB_320_edits.pprof
 ```

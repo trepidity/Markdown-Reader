@@ -1,4 +1,4 @@
-use markdown_viewer_rust::Session;
+use markdown_reader_rust::Session;
 use serde_json::json;
 use std::fs;
 

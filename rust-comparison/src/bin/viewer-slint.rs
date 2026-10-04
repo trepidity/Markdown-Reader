@@ -1,11 +1,11 @@
-use markdown_viewer_rust::shell::Model;
+use markdown_reader_rust::shell::Model;
 use slint::ComponentHandle;
 use std::{cell::RefCell, rc::Rc};
 slint::slint! {
     import { VerticalBox, HorizontalBox, Button, LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
     export struct PreviewBlock { content: string, size: float, mono: bool }
     export component Viewer inherits Window {
-        title: "Markdown Viewer Rust Slint"; width: 1080px; height: 780px;
+        title: "Markdown Reader Rust Slint"; width: 1080px; height: 780px;
         in-out property <string> path;
         in-out property <string> query;
         in-out property <string> source;

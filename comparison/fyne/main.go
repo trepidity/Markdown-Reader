@@ -11,8 +11,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"image/color"
-	"markdownviewer/comparison/session"
-	core "markdownviewer/internal/app"
+	"markdownreader/comparison/session"
+	core "markdownreader/internal/app"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -53,9 +53,9 @@ func (s *imageSpan) Select(fyne.Position, fyne.Position) {}
 func (s *imageSpan) SelectedText() string                { return "" }
 func (s *imageSpan) Unselect()                           {}
 func main() {
-	a := fapp.NewWithID("org.markdownviewer.comparison.fyne")
+	a := fapp.NewWithID("org.markdownreader.comparison.fyne")
 	a.Settings().SetTheme(palette{"paper"})
-	w := a.NewWindow("Markdown Viewer — Fyne")
+	w := a.NewWindow("Markdown Reader — Fyne")
 	w.Resize(fyne.NewSize(1080, 780))
 	engine := session.New(session.Config("Fyne"))
 	var state session.State

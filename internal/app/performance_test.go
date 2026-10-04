@@ -95,8 +95,8 @@ func BenchmarkDispatcher(b *testing.B) {
 // Opt-in profiling, deliberately excluded from the ordinary correctness suite.
 // GC snapshots distinguish retained memory from short-lived render allocations.
 func TestPerformanceMemory(t *testing.T) {
-	if os.Getenv("MARKDOWN_VIEWER_PERF") != "1" {
-		t.Skip("set MARKDOWN_VIEWER_PERF=1 for memory profiling")
+	if os.Getenv("MARKDOWN_READER_PERF") != "1" {
+		t.Skip("set MARKDOWN_READER_PERF=1 for memory profiling")
 	}
 	dir := t.TempDir()
 	a := New(filepath.Join(dir, "settings.json"))
@@ -105,7 +105,7 @@ func TestPerformanceMemory(t *testing.T) {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 		t.Logf("MEMORY phase=%s heap_live_bytes=%d heap_inuse_bytes=%d go_reserved_bytes=%d total_allocated_bytes=%d", phase, m.HeapAlloc, m.HeapInuse, m.Sys, m.TotalAlloc)
-		if directory := os.Getenv("MARKDOWN_VIEWER_PROFILE_DIR"); directory != "" {
+		if directory := os.Getenv("MARKDOWN_READER_PROFILE_DIR"); directory != "" {
 			f, err := os.Create(filepath.Join(directory, phase+".pprof"))
 			if err != nil {
 				t.Fatal(err)

@@ -1,5 +1,5 @@
 use eframe::egui;
-use markdown_viewer_rust::shell::Model;
+use markdown_reader_rust::shell::Model;
 struct Viewer {
     model: Model,
     draft: String,
@@ -113,7 +113,7 @@ fn main() -> eframe::Result {
     let model = Model::startup();
     let draft = String::new();
     eframe::run_native(
-        "Markdown Viewer Rust egui",
+        "Markdown Reader Rust egui",
         eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default().with_inner_size([1080.0, 780.0]),
             ..Default::default()

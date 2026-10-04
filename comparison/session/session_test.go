@@ -1,7 +1,7 @@
 package session
 
 import (
-	"markdownviewer/internal/app"
+	"markdownreader/internal/app"
 	"os"
 	"path/filepath"
 	"strings"

@@ -1,4 +1,4 @@
-use markdown_viewer_rust::shell::Model;
+use markdown_reader_rust::shell::Model;
 use tao::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
@@ -8,7 +8,7 @@ use wry::WebViewBuilder;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoopBuilder::<String>::with_user_event().build();
     let window = WindowBuilder::new()
-        .with_title("Markdown Viewer Rust Wry")
+        .with_title("Markdown Reader Rust Wry")
         .with_inner_size(tao::dpi::LogicalSize::new(1080, 780))
         .build(&event_loop)?;
     let proxy = event_loop.create_proxy();

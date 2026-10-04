@@ -1,4 +1,4 @@
-# Markdown Viewer
+# Markdown Reader
 
 Go owns document state, rendering and persistence. AppKit/WebKit is a thin macOS shell; HTML/CSS/JavaScript owns presentation.
 

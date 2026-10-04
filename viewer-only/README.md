@@ -7,7 +7,7 @@ and separately recorded plugin memory measurements.
 
 Separate runnable macOS application focused on low resident RAM:
 [Markdown Reader.app](../dist/Markdown%20Reader.app).
-It does not replace the existing Markdown Viewer or change default file associations.
+It does not replace the existing Markdown Reader Editor app or change default file associations.
 
 ```sh
 ./scripts/build-viewer-only.sh

@@ -3471,7 +3471,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "markdown-viewer-rust"
+name = "markdown-reader-rust"
 version = "0.1.0"
 dependencies = [
  "eframe",

@@ -1,4 +1,4 @@
-module markdownviewer/comparison
+module markdownreader/comparison
 
 go 1.25.0
 
@@ -7,7 +7,7 @@ require (
 	gioui.org v0.10.3
 	gioui.org/x v0.10.3
 	golang.org/x/net v0.55.0
-	markdownviewer v0.0.0
+	markdownreader v0.0.0
 )
 
 require (
@@ -40,7 +40,7 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 )
 
-replace markdownviewer => ..
+replace markdownreader => ..
 
 // Keep the shared Markdown core on the exact renderer used by WebKit.
 replace github.com/yuin/goldmark => github.com/yuin/goldmark v1.7.13

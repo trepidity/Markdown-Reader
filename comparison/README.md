@@ -1,4 +1,4 @@
-# Five runnable Markdown Viewer builds
+# Five runnable Markdown Reader builds
 
 These are local macOS comparison builds. They reuse the existing Go document state, Markdown renderer, atomic persistence, conflict protection, undo/redo, and search engine. The four alternative shells are comparison prototypes, not feature-complete replacements for the WebKit product.
 
@@ -12,7 +12,7 @@ All five signed application bundles are in [`../dist/comparison`](../dist/compar
 - [Qt Widgets](../dist/comparison/Markdown%20Viewer%20Qt.app)
 - [Gio](../dist/comparison/Markdown%20Viewer%20Gio.app)
 
-Open `fixtures/features.md` in each app to compare typography, emphasis, lists, quotations, tables, code, task markers, and links. The alternatives also accept a file or folder path in the toolbar. Editing saves immediately; use copies when comparing editors. Settings are separate for each variant under the user's Application Support / Markdown Viewer Comparisons directory. The existing application remains separate.
+Open `fixtures/features.md` in each app to compare typography, emphasis, lists, quotations, tables, code, task markers, and links. The alternatives also accept a file or folder path in the toolbar. Editing saves immediately; use copies when comparing editors. Settings are separate for each variant under the user's Application Support / Markdown Reader Comparisons directory. The existing application remains separate.
 
 ## Measured memory
 
@@ -77,4 +77,4 @@ QT_ROOT=/path/to/Qt/6.12.0/macos ./scripts/build-comparisons.sh
 
 Pinned comparison dependencies: Fyne 2.8.1, Gio 0.10.3, Gio x 0.10.3; the Qt build used 6.12.0. Built here with Go 1.27.1 for macOS arm64. The nested `comparison/go.mod` keeps these toolkits out of the original product module and pins the effective Goldmark renderer to the original 1.7.13 version.
 
-The local Qt installation used for this run is `/private/tmp/markdown-viewer-deps/qt`. Downloaded Go dependencies and the offline proxy are under `/private/tmp/markdown-viewer-deps`; those temporary caches are not required to run the bundles. Qt frameworks and platform plugins are deployed inside its application. The other alternatives use their compiled Go/native dependencies. The build script applies ad-hoc signatures for local execution; these are not notarized distribution releases.
+The local Qt installation used for this run is `/private/tmp/markdown-reader-deps/qt`. Downloaded Go dependencies and the offline proxy are under `/private/tmp/markdown-reader-deps`; those temporary caches are not required to run the bundles. Qt frameworks and platform plugins are deployed inside its application. The other alternatives use their compiled Go/native dependencies. The build script applies ad-hoc signatures for local execution; these are not notarized distribution releases.

@@ -2,7 +2,7 @@
 
 User-authorized alternatives to the WebKit presentation: AppKit, Fyne, Qt Widgets,
 and Gio. Keep document state, persistence, conflict handling, undo, and search in
-`markdownviewer/internal/app`. Do not substitute independent save implementations.
+`markdownreader/internal/app`. Do not substitute independent save implementations.
 
 Product seams are the existing JSON dispatcher, the structured presentation
 response derived from its sanitized HTML, actual temporary files, and each
