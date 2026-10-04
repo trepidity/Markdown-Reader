@@ -1024,6 +1024,9 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  if(self.findStatus.length&&!self.loading)idle=self.findStatus; // while searching, the subtitle carries the match count
  self.window.subtitle=self.loading?(self.pendingTotal?[NSString stringWithFormat:@"Rendering diagram %lu of %lu…",(unsigned long)MIN(self.pendingDone+1,self.pendingTotal),(unsigned long)self.pendingTotal]:@"Loading…"):idle;
  self.window.representedURL=path?[NSURL fileURLWithPath:path]:nil;
+ // The proxy icon would otherwise be whatever macOS currently draws for .md; show the reader's own.
+ static NSImage *documentIcon;if(!documentIcon)documentIcon=[[NSImage alloc]initWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"MarkdownDocument" ofType:@"icns"]];
+ if(path&&documentIcon)[self.window standardWindowButton:NSWindowDocumentIconButton].image=documentIcon;
 }
 // Transient message pill at the bottom of the page; replaces the old status bar.
 - (void)notify:(NSString *)message {
