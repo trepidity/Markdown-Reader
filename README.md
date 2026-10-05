@@ -32,7 +32,7 @@ The app is ad-hoc signed for the current Mac. It is not notarized for distributi
 - CommonMark with tables, strikethrough, task lists, block quotes, nested lists and rules. Raw HTML is not rendered.
 - **Front matter** appears as a properties table of key and value. Anything it cannot structure is shown as a code block instead.
 - **Code** is syntax highlighted in GitHub colours for Go, JavaScript/TypeScript, JSON, shell, SQL, Python, YAML and diff. Inline code is a rounded pill.
-- **Tables** are drawn as a real grid whose text can be found, selected and copied. A table wider than the reading column gets an **Expand / Fit to window** button above it.
+- **Tables** are drawn as a real grid whose text can be found, selected and copied. A table wider than the reading column opens expanded to the window width, with a **Fit to window / Expand** button above it to switch back.
 - **Mermaid diagrams** (fenced `mermaid` blocks) are rendered by an optional plugin. The text shows first with a placeholder per diagram, and the diagrams fill in as they finish. **File → Export Diagram as SVG…** saves one. **Plugins → Enable Plugins** turns the plugin off.
 - Links open in the default browser, and relative links open in the app.
 

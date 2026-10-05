@@ -664,7 +664,7 @@ static BOOL AllowedLink(const uint8_t *s,uint32_t n) {
  NSMutableArray<NSNumber *> *alignment=[NSMutableArray new];
  for(id a in align)[alignment addObject:@([a isEqual:@"r"]?NSTextAlignmentRight:[a isEqual:@"c"]?NSTextAlignmentCenter:NSTextAlignmentLeft)];
  NSDictionary *base=[self attributes:flags];
- ReaderTable *table=[ReaderTable new];table.cells=rows;table.alignment=alignment;table.base=base;
+ ReaderTable *table=[ReaderTable new];table.expanded=YES;table.cells=rows;table.alignment=alignment;table.base=base;
  table.properties=[json[@"properties"] boolValue];
  table.indent=((NSParagraphStyle *)base[NSParagraphStyleAttributeName]).headIndent;++_tables;
  NSMutableDictionary *a=[base mutableCopy];a[ReaderTableAttribute]=table;
