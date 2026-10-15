@@ -839,11 +839,23 @@ static NSArray<NSColor *> *RailGuideColors(void) {
 }
 @end
 
+// Recently opened folders and files are two separate lists of RecentLimit paths each, newest
+// first, so a run of files can never push the folders out. They live in user defaults.
+static NSString *const RecentFoldersKey=@"RecentFolders",*const RecentFilesKey=@"RecentFiles";
+static const NSUInteger RecentLimit=10;
+static void RememberRecent(NSString *key,NSString *path) {
+ NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;
+ NSMutableArray<NSString *> *list=[[defaults stringArrayForKey:key]?:@[] mutableCopy];
+ [list removeObject:path];[list insertObject:path atIndex:0];
+ if(list.count>RecentLimit)[list removeObjectsInRange:NSMakeRange(RecentLimit,list.count-RecentLimit)];
+ [defaults setObject:list forKey:key];
+}
+
 // The rail grows to show the longest visible name in full, up to RailMaxWidth; longer names
 // truncate in the middle. The pane beside it keeps at least RailMinPane.
 static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellChrome=24,RailSlack=24;
 
-@interface Reader : NSObject <NSApplicationDelegate,NSTextViewDelegate,NSMenuItemValidation,NSTextLayoutManagerDelegate,NSOutlineViewDataSource,NSOutlineViewDelegate,NSSplitViewDelegate>
+@interface Reader : NSObject <NSApplicationDelegate,NSTextViewDelegate,NSMenuItemValidation,NSTextLayoutManagerDelegate,NSOutlineViewDataSource,NSOutlineViewDelegate,NSSplitViewDelegate,NSMenuDelegate>
 @property NSWindow *window;
 @property NSTextView *text;
 @property NSScrollView *scroll;
@@ -923,6 +935,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  NSMenuItem *file=[NSMenuItem new];file.title=@"File";file.submenu=[NSMenu new];[menu addItem:file];
  for(NSArray *item in @[@[@"Open…",@"open:",@"o"],@[@"Reload",@"reload:",@"r"],@[@"Close document",@"clear:",@"w"],@[@"Close Folder",@"closeFolder:",@""]]){NSMenuItem *i=[file.submenu addItemWithTitle:item[0] action:NSSelectorFromString(item[1]) keyEquivalent:item[2]];i.target=self;}
  NSMenuItem *export=[file.submenu addItemWithTitle:@"Export Diagram as SVG…" action:@selector(exportSVG:) keyEquivalent:@"S"];export.target=self;
+ NSMenuItem *recent=[[NSMenuItem alloc]initWithTitle:@"Open Recent" action:nil keyEquivalent:@""];recent.submenu=[NSMenu new];recent.submenu.delegate=self;[file.submenu insertItem:recent atIndex:1];
  NSMenuItem *edit=[NSMenuItem new];edit.title=@"Edit";edit.submenu=[NSMenu new];[menu addItem:edit];
  [edit.submenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
  [edit.submenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
@@ -1077,7 +1090,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  absolute=absolute.stringByStandardizingPath;
  [self captureViewState];self.loading=YES;self.loadingPath=absolute;self.referenceCache=nil;
  // A file opened with no folder open shows its own folder, so its neighbours are one click away.
- if(!self.folderRoot)[self openFolder:absolute.stringByDeletingLastPathComponent];
+ if(!self.folderRoot)[self showFolder:absolute.stringByDeletingLastPathComponent];
  [self revealInRail:absolute];[self refreshTitle];
  NSString *helper=[NSBundle.mainBundle pathForResource:@"markdown-reader" ofType:nil];
  NSString *registry=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"Plugins"];
@@ -1108,7 +1121,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
       dispatch_sync(dispatch_get_main_queue(),^{
        if(load.cancelled)return;
        ReaderDocument *document=[self documentForPath:absolute];
-       document.path=absolute;self.document=document;
+       document.path=absolute;self.document=document;RememberRecent(RecentFilesKey,absolute);
        self.hasTables=tables>0;[self install:body];self.diagrams=0;self.pendingTotal=placeholders;self.pendingDone=0;[self restoreViewState];[self refreshTitle];
       });
      };
@@ -1138,7 +1151,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
    }else if(storage){
     // Reloading the same file keeps the reader's place; a different file starts at the top.
     ReaderDocument *document=[self documentForPath:absolute];
-    document.path=absolute;self.document=document;
+    document.path=absolute;self.document=document;RememberRecent(RecentFilesKey,absolute);
     self.hasTables=tables>0;[self install:storage];self.diagrams=diagrams;[self restoreViewState];
    }else if(begun){
     // The previous document was already released; never show a partial document.
@@ -1179,7 +1192,9 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  NSString *expanded=path.stringByExpandingTildeInPath;BOOL directory=NO;
  if([NSFileManager.defaultManager fileExistsAtPath:expanded isDirectory:&directory]&&directory)[self openFolder:expanded];else [self load:path];
 }
-- (void)openFolder:(NSString *)path {
+- (void)openFolder:(NSString *)path {[self showFolder:path];RememberRecent(RecentFoldersKey,self.folderRoot.path);}
+// Shows a folder in the rail without counting it as recently opened.
+- (void)showFolder:(NSString *)path {
  NSString *absolute=path.stringByExpandingTildeInPath;
  if(!absolute.isAbsolutePath)absolute=[NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:absolute];
  absolute=absolute.stringByStandardizingPath;
@@ -1216,6 +1231,32 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  if(!self.fittingRail&&note.userInfo[@"NSSplitViewDividerIndex"])self.railSizedByReader=YES;
 }
 - (void)toggleRail:(id)sender {if(self.folderRoot)[self setRailVisible:self.rail.hidden];}
+// The Open Recent menu is rebuilt each time it opens: folders first, then files, each from
+// its own list, leaving out anything that no longer exists on disk.
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+ [menu removeAllItems];
+ NSFileManager *fm=NSFileManager.defaultManager;NSUInteger shown=0;
+ for(NSArray<NSString *> *section in @[@[@"Folders",RecentFoldersKey],@[@"Files",RecentFilesKey]]){
+  NSMutableArray<NSMenuItem *> *items=[NSMutableArray new];
+  for(NSString *path in [NSUserDefaults.standardUserDefaults stringArrayForKey:section[1]]){
+   if(![fm fileExistsAtPath:path])continue;
+   NSMenuItem *item=[[NSMenuItem alloc]initWithTitle:path.lastPathComponent action:@selector(openRecent:) keyEquivalent:@""];
+   item.target=self;item.representedObject=path;item.toolTip=path.stringByAbbreviatingWithTildeInPath;
+   NSImage *icon=[NSWorkspace.sharedWorkspace iconForFile:path];icon.size=NSMakeSize(16,16);item.image=icon;
+   [items addObject:item];
+  }
+  if(!items.count)continue;
+  if(menu.numberOfItems)[menu addItem:NSMenuItem.separatorItem];
+  [menu addItemWithTitle:section[0] action:nil keyEquivalent:@""]; // no action: shown as a disabled heading
+  for(NSMenuItem *item in items)[menu addItem:item];
+  shown+=items.count;
+ }
+ if(!shown){[menu addItemWithTitle:@"No Recent Items" action:nil keyEquivalent:@""];return;}
+ [menu addItem:NSMenuItem.separatorItem];
+ NSMenuItem *clear=[menu addItemWithTitle:@"Clear Menu" action:@selector(clearRecent:) keyEquivalent:@""];clear.target=self;
+}
+- (void)openRecent:(NSMenuItem *)sender {[self openPath:sender.representedObject];}
+- (void)clearRecent:(id)sender {[NSUserDefaults.standardUserDefaults removeObjectForKey:RecentFoldersKey];[NSUserDefaults.standardUserDefaults removeObjectForKey:RecentFilesKey];}
 - (void)closeFolder:(id)sender {
  self.folderRoot=nil;[self.outline reloadData];[self setRailVisible:NO];[self refreshTitle];
 }
