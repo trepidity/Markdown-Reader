@@ -809,6 +809,34 @@ static BOOL MarkdownName(NSString *name) {
 - (void)cancel {@synchronized(self){_cancelled=YES;if(_task.running)[_task terminate];}}
 @end
 
+// Vertical guides join each row to the disclosure triangle of every folder above it, so
+// the depth of a nested file can be read without counting indents. Each depth has its own
+// colour, cycling through the palette; guides are drawn beneath the selection highlight and
+// run only from a folder's first child down through its last.
+static NSArray<NSColor *> *RailGuideColors(void) {
+ static NSArray<NSColor *> *colors;static dispatch_once_t once;
+ dispatch_once(&once,^{colors=@[NSColor.systemBlueColor,NSColor.systemGreenColor,NSColor.systemOrangeColor,NSColor.systemPinkColor,NSColor.systemPurpleColor,NSColor.systemTealColor,NSColor.systemYellowColor];});
+ return colors;
+}
+@interface ReaderRailRow : NSTableRowView
+@end
+@implementation ReaderRailRow
+- (void)drawBackgroundInRect:(NSRect)dirty {
+ [super drawBackgroundInRect:dirty];
+ NSOutlineView *outline=(NSOutlineView *)self.superview;
+ if(![outline isKindOfClass:NSOutlineView.class])return;
+ NSInteger row=[outline rowForView:self];if(row<0)return;
+ NSArray<NSColor *> *colors=RailGuideColors();
+ for(id item=[outline parentForItem:[outline itemAtRow:row]];item;item=[outline parentForItem:item]){
+  NSInteger parent=[outline rowForItem:item];
+  NSRect cell=[self convertRect:[outline frameOfOutlineCellAtRow:parent] fromView:outline];
+  if(NSIsEmptyRect(cell))continue;
+  [[colors[(NSUInteger)[outline levelForRow:parent]%colors.count] colorWithAlphaComponent:0.6] setFill];
+  NSRectFillUsingOperation(NSMakeRect(floor(NSMidX(cell)),0,1,self.bounds.size.height),NSCompositingOperationSourceOver);
+ }
+}
+@end
+
 // The rail grows to show the longest visible name in full, up to RailMaxWidth; longer names
 // truncate in the middle. The pane beside it keeps at least RailMinPane.
 static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellChrome=24,RailSlack=24;
@@ -1219,6 +1247,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(ReaderNode *)item {return item?(NSInteger)item.children.count:(self.folderRoot?1:0);}
 - (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(ReaderNode *)item {return item?item.children[(NSUInteger)index]:self.folderRoot;}
 - (BOOL)outlineView:(NSOutlineView *)outline isItemExpandable:(ReaderNode *)item {return item.directory;}
+- (NSTableRowView *)outlineView:(NSOutlineView *)outline rowViewForItem:(ReaderNode *)item {return [outline makeViewWithIdentifier:@"row" owner:self]?:({ReaderRailRow *r=[ReaderRailRow new];r.identifier=@"row";r;});}
 - (NSView *)outlineView:(NSOutlineView *)outline viewForTableColumn:(NSTableColumn *)column item:(ReaderNode *)item {
  NSTableCellView *cell=[outline makeViewWithIdentifier:@"node" owner:self];
  if(!cell){
