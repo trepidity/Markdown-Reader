@@ -86,7 +86,8 @@ static const CGFloat TablePadX=10,TablePadY=6,TableMinColumn=36,TableWordCap=220
 @property BOOL expanded;                          // wants the full window width
 @property BOOL properties;                        // front matter: key / value, no header row
 @property(copy) NSString *layoutKey;              // what the current text was laid out for
-@property BOOL fullWidth;                         // laid out expanded: its lines use the whole container
+@property BOOL fullWidth;                         // laid out expanded: its lines may use the whole container
+@property CGFloat inset;                          // expanded: how far its lines start in from each container edge, centring it
 @end
 @implementation ReaderTable
 @end
@@ -206,7 +207,8 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   [line appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:tail]];
   [line addAttribute:ReaderTableAttribute value:table range:NSMakeRange(0,line.length)];[out appendAttributedString:line];
  }
- CGFloat shift=expanded?0:offset;
+ // An expanded table narrower than the pane is centred in it, like the reading column.
+ CGFloat inset=expanded?MAX(0,floor((container-x-2*pad)/2)):0,shift=expanded?inset:offset;
  for(NSUInteger r=0;r<table.cells.count;r++){
   NSArray *row=table.cells[r];BOOL header=r==0&&!table.properties;
   NSMutableArray<NSArray<NSString *> *> *cellLines=[NSMutableArray new];NSUInteger depth=1;
@@ -244,7 +246,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   }
  }
  table.layoutKey=TableKey(table,pane);
- table.fullWidth=expanded;
+ table.fullWidth=expanded;table.inset=inset;
  return out;
 }
 
@@ -255,7 +257,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   NSTextContentManager *content=self.textLayoutManager.textContentManager;
   NSTextStorage *storage=[content isKindOfClass:NSTextContentStorage.class]?((NSTextContentStorage *)content).textStorage:nil;
   ReaderTable *table=storage&&index<storage.length?[storage attribute:ReaderTableAttribute atIndex:index effectiveRange:NULL]:nil;
-  if(table.fullWidth)return rect; // an expanded table keeps the whole container
+  if(table.fullWidth){rect.origin.x+=table.inset;rect.size.width=MAX(0,rect.size.width-2*table.inset);return rect;} // an expanded table sits centred in the container
  }
  CGFloat offset=ColumnOffset(self.size.width); // everything else: the centred reading column
  rect.origin.x+=offset;rect.size.width=MAX(0,rect.size.width-2*offset);
