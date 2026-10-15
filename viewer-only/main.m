@@ -25,11 +25,11 @@ enum {
 enum { BlockCode=1, BlockCodeFirst=2, BlockCodeLast=4, BlockRule=8 };
 static const CGFloat ListStep=26, QuoteStep=20, CodePad=14, CodeBandPad=8, MeasureWidth=700;
 static __weak NSView *ReaderTextView; // appearance source for fragment drawing
-// The text container spans the pane less PageMargin each side. Ordinary text sits in a centred
-// column of MeasureWidth (its lines are narrowed by ReaderTextContainer); an expanded table's
-// lines use the whole container. The column starts this far in from the container's left edge.
+// The text container is inset PageMargin from the pane; that margin is fixed, not a share of
+// the leftover width. Ordinary text is a column of at most MeasureWidth pinned to the
+// container's left edge (ReaderTextContainer). Extra pane width stays on the right.
 static const CGFloat PageMargin=24;
-static CGFloat ColumnOffset(CGFloat containerWidth) {return MAX(12,round((containerWidth-MeasureWidth)/2));}
+static CGFloat ReadingColumnWidth(CGFloat containerWidth) {return MIN(MeasureWidth, MAX(0, containerWidth));}
 
 @interface ReaderDiagramAttachment : NSTextAttachment
 @end
@@ -86,8 +86,9 @@ static const CGFloat TablePadX=10,TablePadY=6,TableMinColumn=36,TableWordCap=220
 @property BOOL expanded;                          // wants the full window width
 @property BOOL properties;                        // front matter: key / value, no header row
 @property(copy) NSString *layoutKey;              // what the current text was laid out for
-@property BOOL fullWidth;                         // laid out expanded: its lines may use the whole container
-@property CGFloat inset;                          // expanded: how far its lines start in from each container edge, centring it
+@property BOOL fullWidth;                         // laid out expanded: its lines may be wider than the reading column
+@property CGFloat inset;                          // expanded: left edge of its lines in the container (the column is not centred)
+@property CGFloat span;                           // expanded: line width, so the Fit button stays on the table
 @end
 @implementation ReaderTable
 @end
@@ -144,7 +145,7 @@ static NSImage *TableToggleImage(BOOL expanded) {
 static NSString *TableKey(ReaderTable *table,CGFloat pane) {
  CGFloat container=pane-2*PageMargin;
  if(table.expanded)return [NSString stringWithFormat:@"x%.1f",container];
- return [NSString stringWithFormat:@"f%.1f",MAX(120,container-2*ColumnOffset(container)-10-table.indent)];
+ return [NSString stringWithFormat:@"f%.1f",MAX(120,ReadingColumnWidth(container)-10-table.indent)];
 }
 
 // The table's text for a pane `pane` points wide.
@@ -153,8 +154,8 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
  NSUInteger count=0;for(NSArray *row in table.cells)count=MAX(count,row.count);
  if(!count)return nil;
  CGFloat indent=table.indent,pad=5; // NSTextContainer's default line fragment padding
- CGFloat container=pane-2*PageMargin,offset=ColumnOffset(container);
- CGFloat fit=MAX(120,container-2*offset-2*pad-indent),full=MAX(fit,container-2*pad-indent);
+ CGFloat container=pane-2*PageMargin;
+ CGFloat fit=MAX(120,ReadingColumnWidth(container)-2*pad-indent),full=MAX(fit,container-2*pad-indent);
  NSCharacterSet *space=NSCharacterSet.whitespaceAndNewlineCharacterSet;
  NSMutableArray<NSNumber *> *natural=[NSMutableArray new],*minimum=[NSMutableArray new];
  for(NSUInteger c=0;c<count;c++){
@@ -207,8 +208,9 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   [line appendAttributedString:[[NSAttributedString alloc]initWithString:@"\n" attributes:tail]];
   [line addAttribute:ReaderTableAttribute value:table range:NSMakeRange(0,line.length)];[out appendAttributedString:line];
  }
- // An expanded table narrower than the pane is centred in it, like the reading column.
- CGFloat inset=expanded?MAX(0,floor((container-x-2*pad)/2)):0,shift=expanded?inset:offset;
+ // Pin the table to the reading column's left edge. An expanded table keeps a line only as
+ // wide as itself, so its Fit button stays on the table instead of the window's right edge.
+ CGFloat span=MIN(MAX(0,container),MAX(0,x+2*pad)),shift=0;
  for(NSUInteger r=0;r<table.cells.count;r++){
   NSArray *row=table.cells[r];BOOL header=r==0&&!table.properties;
   NSMutableArray<NSArray<NSString *> *> *cellLines=[NSMutableArray new];NSUInteger depth=1;
@@ -246,7 +248,7 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   }
  }
  table.layoutKey=TableKey(table,pane);
- table.fullWidth=expanded;table.inset=inset;
+ table.fullWidth=expanded;table.inset=0;table.span=span;
  return out;
 }
 
@@ -257,10 +259,13 @@ static NSAttributedString *TableText(ReaderTable *table,CGFloat pane) {
   NSTextContentManager *content=self.textLayoutManager.textContentManager;
   NSTextStorage *storage=[content isKindOfClass:NSTextContentStorage.class]?((NSTextContentStorage *)content).textStorage:nil;
   ReaderTable *table=storage&&index<storage.length?[storage attribute:ReaderTableAttribute atIndex:index effectiveRange:NULL]:nil;
-  if(table.fullWidth){rect.origin.x+=table.inset;rect.size.width=MAX(0,rect.size.width-2*table.inset);return rect;} // an expanded table sits centred in the container
+  if(table.fullWidth){
+   CGFloat end=table.inset+table.span;
+   rect.origin.x+=table.inset;rect.size.width=MAX(0,MIN(rect.size.width,end-rect.origin.x));return rect;
+  }
  }
- CGFloat offset=ColumnOffset(self.size.width); // everything else: the centred reading column
- rect.origin.x+=offset;rect.size.width=MAX(0,rect.size.width-2*offset);
+ CGFloat column=ReadingColumnWidth(self.size.width); // pinned left; not centred in the pane
+ rect.size.width=MAX(0,MIN(rect.size.width,column-rect.origin.x));
  return rect;
 }
 @end
@@ -414,8 +419,8 @@ static CGPathRef BandPath(CGRect r,BOOL roundTop,BOOL roundBottom,CGFloat radius
 - (void)drawAtPoint:(CGPoint)point inContext:(CGContextRef)context {
  uint32_t block=self.block;CGRect frame=self.layoutFragmentFrame;
  NSTextContainer *c=self.textLayoutManager.textContainer;
- CGFloat total=c?c.size.width:frame.size.width,offset=ColumnOffset(total);
- CGFloat pad=c.lineFragmentPadding,width=total-2*offset,left=point.x-frame.origin.x+offset+pad; // the reading column, not the container
+ CGFloat total=c?c.size.width:frame.size.width,pad=c?c.lineFragmentPadding:5,width=ReadingColumnWidth(total);
+ CGFloat left=point.x-frame.origin.x+pad; // the reading column, pinned to the container's left edge
  CGFloat height=frame.size.height;NSUInteger quotes=(block>>8)&255,lists=(block>>16)&255;
  NSArray<NSTextLineFragment *> *lines=self.textLineFragments;
  void (^draw)(void)=^{
@@ -928,7 +933,7 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
   [self.toastLabel.widthAnchor constraintLessThanOrEqualToConstant:520]]];
  [self buildRailWithPane:content];
  [self.text setFrameSize:NSMakeSize(1000,700)];
- // Readable measure: keep the text column near MeasureWidth and centred.
+ // Readable measure: at most MeasureWidth, pinned to the left margin.
  scroll.contentView.postsFrameChangedNotifications=YES;
  [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateMeasure:) name:NSViewFrameDidChangeNotification object:scroll.contentView];
  NSMenu *menu=[NSMenu new];NSMenuItem *app=[NSMenuItem new];[menu addItem:app];app.submenu=[NSMenu new];[app.submenu addItemWithTitle:@"Quit Markdown Reader" action:@selector(terminate:) keyEquivalent:@"q"];
@@ -1000,8 +1005,8 @@ static const CGFloat RailMinWidth=170,RailMaxWidth=480,RailMinPane=400,RailCellC
  return found;
 }
 - (void)toggleTable:(ReaderTable *)table {table.expanded=!table.expanded;[self layoutTablesIn:self.text.textStorage only:table];}
-// The container spans the pane less a margin; the text container hook centres ordinary text in
-// a column of MeasureWidth, so only the table layout needs to follow width changes.
+// The container spans the pane less a fixed margin. Ordinary text stays in a left-pinned
+// column of MeasureWidth, so only the table layout needs to follow width changes.
 - (void)updateMeasure:(NSNotification *)note {
  NSSize inset=NSMakeSize(PageMargin,28);
  if(!NSEqualSizes(inset,self.text.textContainerInset))self.text.textContainerInset=inset; // no-op when unchanged: no layout loop
